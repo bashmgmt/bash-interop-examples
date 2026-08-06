@@ -54,8 +54,10 @@ fn a_session_may_hold_a_resource_and_keep_no_messages() {
     )]);
     let into = scripts.at("said.log");
 
-    let (session, status) =
-        run(&Logging { into: into.clone() }, &bash(scripts.at("main.bash"))).unwrap();
+    let (session, status) = run(&Logging { into: into.clone() }, &bash(scripts.at("main.bash")))
+        .unwrap()
+        .whole()
+        .unwrap();
 
     assert_eq!(status, ExitStatus::Code(0));
 

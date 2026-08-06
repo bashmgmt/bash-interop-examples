@@ -108,6 +108,8 @@ fn each_turn_is_computed_from_what_the_other_side_said() {
 
     let (session, status) =
         run(&Choosing { steps: scripts.dir().to_path_buf() }, &bash(scripts.at("session.bash")))
+            .unwrap()
+            .whole()
             .unwrap();
 
     // `picked` was set by a sourced command and is still in the script's own

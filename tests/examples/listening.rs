@@ -66,7 +66,8 @@ fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
             "#,
     )]);
 
-    let (heard, status) = run(&Keeping, &bash(scripts.at("collect.bash"))).unwrap();
+    let (heard, status) =
+        run(&Keeping, &bash(scripts.at("collect.bash"))).unwrap().whole().unwrap();
 
     assert_eq!(status, ExitStatus::Code(0));
 

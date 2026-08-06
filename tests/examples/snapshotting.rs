@@ -52,7 +52,8 @@ impl Rig for Snapshots {
 
 #[test]
 fn a_tools_instrument_is_reusable_without_its_command_line() {
-    let (seen, status) = run(&Snapshots, &bash(fixture("bashcap_demo/demo.bash"))).unwrap();
+    let (seen, status) =
+        run(&Snapshots, &bash(fixture("bashcap_demo/demo.bash"))).unwrap().whole().unwrap();
 
     assert_eq!(status, ExitStatus::Code(0));
     for (at, capture) in seen.iter().enumerate() {
