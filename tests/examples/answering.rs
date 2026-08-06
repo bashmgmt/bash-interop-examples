@@ -68,7 +68,7 @@ impl Rig for Choosing {
     }
 
     fn answer(&self, session: &mut Conversation, asked: Line) -> Result<Answer, Failure> {
-        let phase = asked.asked().unwrap_or_default().last().cloned().unwrap_or_default();
+        let phase = asked.words.last().cloned().unwrap_or_default();
         let step = self.steps.join(format!("step.{}.{}.bash", asked.pid, asked.seq));
         session.heard.push(asked);
 

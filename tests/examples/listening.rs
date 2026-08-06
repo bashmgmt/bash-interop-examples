@@ -84,5 +84,5 @@ fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
     assert_eq!(total, [["alpha", "beta with spaces"]]);
 
     // Provenance rides along: one shell produced all of it.
-    assert_eq!(shells(&heard).unwrap().len(), 1);
+    assert_eq!(shells(&heard).len(), 1);
 }
