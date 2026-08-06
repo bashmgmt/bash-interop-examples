@@ -6,9 +6,9 @@
 
 use std::path::PathBuf;
 
-use mb_resolver::bash::rig::{field, run, Answer, ExitStatus, Failure, Line, Rig};
+use mb_resolver::bash::rig::{field, run, Answer, ExitStatus, Failure, Line, Rig, Startup};
 
-use crate::support::{sourcing, Scripts};
+use crate::support::{bash, sourcing, Scripts};
 
 const OPERATOR_BASH: &str = r#"
 MARK() { BC_INSTR say MARK "$@"; }
@@ -53,8 +53,8 @@ impl Rig for Choosing {
     type Session = Conversation;
 
     /// The words this operator answers with, defined in every shell.
-    fn bash(&self) -> String {
-        OPERATOR_BASH.to_string()
+    fn startup(&self) -> Startup {
+        Startup { bash: OPERATOR_BASH.to_string(), ..Default::default() }
     }
 
     fn open(&self) -> Result<Conversation, Failure> {
@@ -107,7 +107,7 @@ fn each_turn_is_computed_from_what_the_other_side_said() {
     )]);
 
     let (session, status) =
-        run(&Choosing { steps: scripts.dir().to_path_buf() }, &[scripts.at("session.bash")])
+        run(&Choosing { steps: scripts.dir().to_path_buf() }, &bash(scripts.at("session.bash")))
             .unwrap();
 
     // `picked` was set by a sourced command and is still in the script's own

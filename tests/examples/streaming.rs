@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 use mb_resolver::bash::rig::{run, Doing, ExitStatus, Failure, Line, Rig};
 
-use crate::support::Scripts;
+use crate::support::{bash, Scripts};
 
 struct Logging {
     into: PathBuf,
@@ -55,7 +55,7 @@ fn a_session_may_hold_a_resource_and_keep_no_messages() {
     let into = scripts.at("said.log");
 
     let (session, status) =
-        run(&Logging { into: into.clone() }, &[scripts.at("main.bash")]).unwrap();
+        run(&Logging { into: into.clone() }, &bash(scripts.at("main.bash"))).unwrap();
 
     assert_eq!(status, ExitStatus::Code(0));
 

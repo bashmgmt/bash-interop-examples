@@ -9,10 +9,11 @@
 
 use std::collections::HashSet;
 
-use mb_resolver::bash::rig::{run, Doing, ExitStatus, Failure, Line, Rig};
+use mb_resolver::bash::rig::{run, Doing, ExitStatus, Failure, Line, Rig, Startup};
 use mb_resolver::bashcap::{Capture, BASH};
 
 use crate::fixture;
+use crate::support::bash;
 
 /// The session: every snapshot, under the provenance the wire gave it.
 struct Snapshots;
@@ -21,8 +22,8 @@ impl Rig for Snapshots {
     type Session = Vec<Capture>;
 
     /// bashcap's instrument, in every shell the subject starts.
-    fn bash(&self) -> String {
-        BASH.to_string()
+    fn startup(&self) -> Startup {
+        Startup { bash: BASH.to_string(), ..Default::default() }
     }
 
     fn open(&self) -> Result<Self::Session, Failure> {
@@ -42,7 +43,7 @@ impl Rig for Snapshots {
 
 #[test]
 fn a_tools_instrument_is_reusable_without_its_command_line() {
-    let (seen, status) = run(&Snapshots, &[fixture("bashcap_demo/demo.bash")]).unwrap();
+    let (seen, status) = run(&Snapshots, &bash(fixture("bashcap_demo/demo.bash"))).unwrap();
 
     assert_eq!(status, ExitStatus::Code(0));
     for (at, capture) in seen.iter().enumerate() {
