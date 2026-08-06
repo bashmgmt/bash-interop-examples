@@ -1,16 +1,18 @@
 //! Reusing another tool's instrument: bashcap's bash and its decoder, with no
 //! command line and no JSON in between.
 //!
-//! `bashcap run --into out.jsonl script.bash` is this rig with a file for a
-//! session. Here the session is typed captures, so what is reused is exactly
-//! the pair that matters — the bash that harvests a shell, and the code that
-//! reads one back. The rendering comes with them: `Capture` is `Display`, and
-//! `bashcap show` prints the same text.
+//! `bashcap run --into out.jsonl --trace-calls bash script.bash` is this rig
+//! with a file for a session. Here the session is typed captures, so what is
+//! reused is exactly the pair that matters — the bash that harvests a shell,
+//! and the code that reads one back. The rendering comes with them: `Capture`
+//! is `Display`, and `bashcap show` prints the same text.
+//!
+//! `cargo test --test examples -- --nocapture snapshotting`
 
 use std::collections::HashSet;
 
 use mb_resolver::bash::rig::{run, Doing, ExitStatus, Failure, Line, Rig, Startup};
-use mb_resolver::bashcap::{Capture, BASH};
+use mb_resolver::bashcap::{instrument, Capture};
 
 use crate::fixture;
 use crate::support::bash;
@@ -21,9 +23,16 @@ struct Snapshots;
 impl Rig for Snapshots {
     type Session = Vec<Capture>;
 
-    /// bashcap's instrument, in every shell the subject starts.
+    /// bashcap's instrument, in every shell the subject starts, asking for
+    /// the full stack: `tracing_calls` adds the switch that makes bash record
+    /// what each call was passed.
+    ///
+    /// It is not free. `extdebug` also makes `ERR`, `DEBUG` and `RETURN`
+    /// traps inherited by functions and subshells, so a subject with traps of
+    /// its own behaves differently under it. That is why it is asked for
+    /// rather than assumed.
     fn startup(&self) -> Startup {
-        Startup { bash: BASH.to_string(), ..Default::default() }
+        Startup { bash: instrument(true), ..Default::default() }
     }
 
     fn open(&self) -> Result<Self::Session, Failure> {
@@ -54,6 +63,8 @@ fn a_tools_instrument_is_reusable_without_its_command_line() {
     // numbers, its variable names, or how many snapshots it takes. What is
     // asserted holds for any script that calls `BASHCAP`.
     assert!(!seen.is_empty(), "an instrumented script took at least one snapshot");
+
+    let frames: Vec<_> = seen.iter().flat_map(|capture| &capture.snapshot.frames).collect();
     for capture in &seen {
         assert!(!capture.snapshot.frames.is_empty(), "pid {} says where it is", capture.pid);
         assert!(capture.snapshot.state.contains_key("shlvl"), "and which shell it is");
@@ -62,13 +73,15 @@ fn a_tools_instrument_is_reusable_without_its_command_line() {
     let shells: HashSet<u32> = seen.iter().map(|capture| capture.pid).collect();
     assert!(shells.len() > 1, "the fixture's subshell and child are shells of their own");
 
-    // The child turns `extdebug` on itself, so its frames carry the arguments
-    // they were called with. Nothing else in the fixture does.
-    let (traced, bare): (Vec<_>, Vec<_>) = seen
-        .iter()
-        .flat_map(|capture| &capture.snapshot.frames)
-        .partition(|frame| frame.args.is_some());
-
-    assert!(!traced.is_empty(), "the traced child reported its call arguments");
-    assert!(!bare.is_empty(), "and an ordinary shell reports none, rather than empty ones");
+    // Every frame, in every shell — the top-level one, the subshell and the
+    // child process alike. `BASH_ENV` is what reaches all of them; a command
+    // line would have reached only the first.
+    assert!(
+        frames.iter().all(|frame| frame.args.is_some()),
+        "asking for the full stack gets it everywhere, not just where the run started"
+    );
+    assert!(
+        frames.iter().any(|frame| frame.args.as_deref().is_some_and(|args| !args.is_empty())),
+        "and the arguments are the real ones, not empty lists"
+    );
 }
