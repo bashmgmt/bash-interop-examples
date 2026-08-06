@@ -112,12 +112,13 @@ fn each_turn_is_computed_from_what_the_other_side_said() {
             .whole()
             .unwrap();
 
-    // `picked` was set by a sourced command and is still in the script's own
-    // scope a turn later.
     let marks: Vec<&[String]> =
         session.heard.iter().filter_map(|line| line.behind("MARK")).collect();
-    assert_eq!(marks, [["settled on elderberry"]]);
+    assert_eq!(
+        marks,
+        [["settled on elderberry"]],
+        "a sourced answer set `picked` in the script's own scope, a turn earlier"
+    );
 
-    // The refusal is a command, so its status walks back out of the script.
-    assert_eq!(status, ExitStatus::Code(2));
+    assert_eq!(status, ExitStatus::Code(2), "a refusal is a command, so its status walks out");
 }

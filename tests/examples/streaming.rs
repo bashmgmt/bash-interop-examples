@@ -61,9 +61,10 @@ fn a_session_may_hold_a_resource_and_keep_no_messages() {
 
     assert_eq!(status, ExitStatus::Code(0));
 
-    // Exactly what the script said. A shell joining costs no message of its
-    // own: provenance rides on the ones it goes on to write.
-    assert_eq!(session.written, 3);
+    assert_eq!(
+        session.written, 3,
+        "exactly what the script said: a shell joining costs no message of its own"
+    );
 
     let log = std::fs::read_to_string(&into).unwrap();
     assert_eq!(log.lines().filter(|line| line.contains("REC")).count(), 3);

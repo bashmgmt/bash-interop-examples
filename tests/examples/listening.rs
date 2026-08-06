@@ -80,10 +80,12 @@ fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
         ]
     );
 
-    // A message nobody wrote a decoder for is still there, as raw words.
     let total: Vec<&[String]> = heard.iter().filter_map(|line| line.behind("TOTAL")).collect();
-    assert_eq!(total, [["alpha", "beta with spaces"]]);
+    assert_eq!(
+        total,
+        [["alpha", "beta with spaces"]],
+        "a message nobody wrote a decoder for is still there, as raw words"
+    );
 
-    // Provenance rides along: one shell produced all of it.
-    assert_eq!(shells(&heard).len(), 1);
+    assert_eq!(shells(&heard).len(), 1, "provenance rides along: one shell produced all of it");
 }

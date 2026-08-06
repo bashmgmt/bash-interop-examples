@@ -12,7 +12,7 @@
 use std::collections::HashSet;
 
 use mb_resolver::bash::rig::{run, Doing, ExitStatus, Failure, Line, Rig, Startup};
-use mb_resolver::bashcap::{instrument, Capture};
+use mb_resolver::bashcap::{instrument, Capture, Tracing};
 
 use crate::fixture;
 use crate::support::bash;
@@ -24,15 +24,12 @@ impl Rig for Snapshots {
     type Session = Vec<Capture>;
 
     /// bashcap's instrument, in every shell the subject starts, asking for
-    /// the full stack: `tracing_calls` adds the switch that makes bash record
-    /// what each call was passed.
-    ///
-    /// It is not free. `extdebug` also makes `ERR`, `DEBUG` and `RETURN`
-    /// traps inherited by functions and subshells, so a subject with traps of
-    /// its own behaves differently under it. That is why it is asked for
-    /// rather than assumed.
+    /// the full stack. `Tracing::Calls` is not free: `extdebug` also makes
+    /// `ERR`, `DEBUG` and `RETURN` traps inherited by functions and
+    /// subshells, so a subject with traps of its own behaves differently
+    /// under it. That is why it is asked for rather than assumed.
     fn startup(&self) -> Startup {
-        Startup { bash: instrument(true), ..Default::default() }
+        Startup { bash: instrument(Tracing::Calls), ..Default::default() }
     }
 
     fn open(&self) -> Result<Self::Session, Failure> {
@@ -60,9 +57,8 @@ fn a_tools_instrument_is_reusable_without_its_command_line() {
         println!("[{at}] {capture}");
     }
 
-    // The fixture is meant to be edited, so nothing here reads its line
-    // numbers, its variable names, or how many snapshots it takes. What is
-    // asserted holds for any script that calls `BASHCAP`.
+    // The fixture is meant to be edited: what follows holds for any script
+    // that calls `BASHCAP`, and reads none of its lines, names or counts.
     assert!(!seen.is_empty(), "an instrumented script took at least one snapshot");
 
     let frames: Vec<_> = seen.iter().flat_map(|capture| &capture.snapshot.frames).collect();
@@ -74,12 +70,11 @@ fn a_tools_instrument_is_reusable_without_its_command_line() {
     let shells: HashSet<u32> = seen.iter().map(|capture| capture.pid).collect();
     assert!(shells.len() > 1, "the fixture's subshell and child are shells of their own");
 
-    // Every frame, in every shell — the top-level one, the subshell and the
-    // child process alike. `BASH_ENV` is what reaches all of them; a command
-    // line would have reached only the first.
+    // `BASH_ENV` reaches every shell; a command line would have reached only
+    // the first.
     assert!(
         frames.iter().all(|frame| frame.args.is_some()),
-        "asking for the full stack gets it everywhere, not just where the run started"
+        "asking for the full stack gets it in every shell, not just where the run started"
     );
     assert!(
         frames.iter().any(|frame| frame.args.as_deref().is_some_and(|args| !args.is_empty())),
