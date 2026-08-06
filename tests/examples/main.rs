@@ -1,77 +1,27 @@
-//! Worked examples of building on `rig`, written against the public API only.
-//!
-//! Each file is a small, complete construction meant to be copied and changed:
+//! Worked examples of building on `rig`, against the public API only.
 //!
 //! | | |
 //! |---|---|
-//! | [`speaking`] | a script reports; you decode what it said |
-//! | [`own_tool`] | adding a tool: some bash, and one `FromRecord` |
-//! | [`asking`] | the shell asks; the answer is a command it runs |
-//! | [`dialogue`] | turn by turn, each computed from the last |
-//! | [`driving`] | a REPL, built here rather than provided |
-//! | [`nesting`] | processes and subshells, ordering and provenance |
+//! | [`listening`] | a session that keeps what a script says, and decodes it |
+//! | [`answering`] | a session that answers questions from what it has heard |
+//! | [`streaming`] | a session that keeps nothing and holds a resource |
+//! | [`snapshotting`] | reusing another tool's instrument and decoder |
 //!
-//! Run one with `cargo test --test examples -- --nocapture <name>`.
+//! Every one of them is the same pieces: a session type, `open`, whichever of
+//! `hear`/`answer`/`end` it cares about, and `bash` if it needs a word of its
+//! own in the subject's shells.
+//!
+//! `cargo test --test examples -- --nocapture <name>`
 
-mod asking;
-mod dialogue;
-mod driving;
-mod nesting;
-mod own_tool;
-mod speaking;
+mod answering;
+mod listening;
+mod snapshotting;
+mod streaming;
 
-use std::fs;
-use std::path::PathBuf;
+#[path = "../support/mod.rs"]
+mod support;
 
-use mb_resolver::bash::rig::{Capture, FromRecord, Rig};
-
-/// Writes `files` to a scratch directory and returns the path of the first.
-/// The scripts are read while bash runs and never after, so the directory may
-/// go when this returns.
-pub fn written(files: &[(&str, &str)]) -> String {
-    let temp = tempfile::tempdir().unwrap();
-    for (name, body) in files {
-        fs::write(temp.path().join(name), body).unwrap();
-    }
-    temp.keep().join(files[0].0).to_string_lossy().into_owned()
-}
-
-/// A script that already lives under `__fixtures/`.
-pub fn fixture(relative: &str) -> String {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("__fixtures").join(relative);
-    assert!(path.is_file(), "missing fixture {}", path.display());
-
-    path.to_string_lossy().into_owned()
-}
-
-/// Runs a rig of one's own.
-pub fn run<R: Rig>(rig: &R, files: &[(&str, &str)]) -> R::Output {
-    rig.run(&[written(files)]).unwrap_or_else(|error| panic!("{error}"))
-}
-
-/// The words behind `lead` in every message that begins with it, in global
-/// time order.
-pub fn args(capture: &Capture, lead: &str) -> Vec<String> {
-    capture
-        .chronological()
-        .into_iter()
-        .filter_map(|line| line.value.behind(lead))
-        .map(|rest| rest.join(" "))
-        .collect()
-}
-
-/// Every record of one family that decoded, in global time order.
-pub fn decoded<T: FromRecord>(capture: &Capture) -> Vec<T> {
-    capture.decoded::<T>().map(|entry| entry.value).collect()
-}
-
-/// Everything that happened, for an assertion message.
-pub fn report(capture: &Capture) -> String {
-    let lines: Vec<String> = capture
-        .chronological()
-        .into_iter()
-        .map(|line| format!("  pid {:>7} | {}", line.stamp.pid, line.value.words.join(" ")))
-        .collect();
-
-    format!("\ncapture:\n{}", lines.join("\n"))
+/// A script under `__fixtures/`, by path from the crate root.
+pub fn fixture(relative: impl AsRef<std::path::Path>) -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("__fixtures").join(relative)
 }
