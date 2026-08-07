@@ -85,10 +85,10 @@ impl Rig for Choosing {
 
             "choose" => match session.preferred() {
                 Some(name) => sourcing(&step, &format!("picked={name}")),
-                None => Ok(Answer::of(["REFUSE", "nothing to choose from", "3"])),
+                None => Ok(Answer::of("REFUSE", ["nothing to choose from", "3"])),
             },
 
-            other => Ok(Answer::of(["REFUSE", &format!("unknown question {other:?}"), "2"])),
+            other => Ok(Answer::of("REFUSE", [format!("unknown question {other:?}"), "2".into()])),
         }
     }
 }
