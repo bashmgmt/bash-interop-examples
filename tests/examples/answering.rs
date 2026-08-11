@@ -11,8 +11,13 @@ use mb_resolver::bash::rig::{field, run, Answer, ExitStatus, Failure, Line, Rig,
 use crate::support::{bash, sourcing, Scripts};
 
 const OPERATOR_BASH: &str = r#"
-MARK() { BC_INSTR say MARK "$@"; }
-REFUSE() { printf 'operator: %s\n' "$1" >&2; return "$2"; }
+MARK() {
+    BC_INSTR say MARK "$@";
+}
+REFUSE() {
+    printf 'operator: %s\n' "$1" >&2
+    return "$2"
+}
 "#;
 
 /// An answer names a path; this decides which. The core has no opinion.
@@ -52,7 +57,6 @@ fn candidate(line: &Line) -> Option<Candidate> {
 impl Rig for Choosing {
     type Session = Conversation;
 
-    /// The words this operator answers with, defined in every shell.
     fn startup(&self) -> Startup {
         Startup { bash: OPERATOR_BASH.to_string(), ..Default::default() }
     }
