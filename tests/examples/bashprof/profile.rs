@@ -43,9 +43,32 @@ impl Span {
         self.ended.0 - self.began.0
     }
 
-    /// What was spent here rather than in a measured child.
+    /// How much of this window no measured child was running for.
+    ///
+    /// Children do not partition it. Two forks of one line run at once, and a
+    /// backgrounded one can outlive the call that made it — so their windows
+    /// are clipped to this one and merged, and summing them instead would
+    /// count the overlap twice and claim more than there is.
     pub fn exclusive(&self) -> u64 {
-        self.inclusive() - self.children.iter().map(Span::inclusive).sum::<u64>()
+        self.inclusive() - self.covered()
+    }
+
+    /// How much of this window some child was running for, counted once.
+    fn covered(&self) -> u64 {
+        let mut windows: Vec<(u64, u64)> = self
+            .children
+            .iter()
+            .map(|child| (child.began.0.max(self.began.0), child.ended.0.min(self.ended.0)))
+            .filter(|(from, upto)| from < upto)
+            .collect();
+
+        windows.sort();
+        windows
+            .iter()
+            .fold((0, self.began.0), |(covered, filled), &(from, upto)| {
+                (covered + upto.saturating_sub(from.max(filled)), filled.max(upto))
+            })
+            .0
     }
 
     pub fn child(&self, label: &str) -> Option<&Span> {
@@ -60,7 +83,7 @@ impl Span {
     fn of(call: &Call, ended: Micros, children: Vec<Span>) -> Self {
         Self {
             label: call.label.clone(),
-            pid: call.pid,
+            pid: call.shell.pid,
             began: call.began,
             ended,
             at: call.at.clone(),
@@ -82,11 +105,12 @@ impl fmt::Display for Profile {
             |span: &Span| span.children.clone(),
             |span: &Span| {
                 format!(
-                    "{} {} µs ({} µs of its own) at {}",
+                    "{} {} µs ({} µs of its own) at {} in pid {}",
                     span.label,
                     span.inclusive(),
                     span.exclusive(),
-                    span.at
+                    span.at,
+                    span.pid
                 )
             },
         ))
@@ -187,20 +211,47 @@ impl Profile {
 mod tests {
     use std::sync::Arc;
 
+    use super::super::record::Shell;
     use super::*;
 
     fn call(label: &str, began: u64) -> Call {
         Call {
             label: label.into(),
-            pid: Pid(1),
             began: Micros(began),
             at: Frame { funcname: "f".into(), source: "/x.bash".into(), lineno: 1, args: None },
             outer: Vec::new(),
+            shell: Shell { pid: Pid(1), joined_at: Micros(0) },
+            forked_from: Vec::new(),
         }
     }
 
     fn node(record: Record, children: Vec<Recorded>) -> Recorded {
         Recorded { record, children: Arc::from(children) }
+    }
+
+    fn span(label: &str, began: u64, ended: u64, children: Vec<Span>) -> Span {
+        Span::of(&call(label, began), Micros(ended), children)
+    }
+
+    /// Two children overlapping each other and a third outliving its parent:
+    /// the time a span had to itself is what none of them covered. Subtracting
+    /// their durations would count the overlap twice and the part beyond the
+    /// window at all, and claim more time than the span has.
+    #[test]
+    fn a_spans_own_time_is_what_no_child_was_running_for() {
+        let a = span(
+            "a",
+            0,
+            100,
+            vec![
+                span("x", 10, 60, Vec::new()),
+                span("y", 40, 90, Vec::new()),
+                span("z", 95, 200, Vec::new()),
+            ],
+        );
+
+        assert_eq!(a.inclusive(), 100);
+        assert_eq!(a.exclusive(), 15, "0..10 and 90..95, and nothing else");
     }
 
     /// Nesting cannot produce this — a shell that dies inside a call leaves

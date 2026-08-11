@@ -13,8 +13,8 @@
 //! | | |
 //! |---|---|
 //! | [`record`] | one call, how it went, and where it sits relative to another |
-//! | [`recording`] | the wire read as flat records — pairing only |
-//! | [`nesting`] | those records read as a tree, by the stacks they carry |
+//! | [`recording`] | the wire read as flat records — one shell's calls at a time |
+//! | [`nesting`] | those records read as a tree, by the stack and shell they carry |
 //! | [`profile`] | that tree read as timings — one hylic fold |
 //! | [`render`] | hylic's tree formatter, for either tree |
 
@@ -30,25 +30,29 @@ use mb_resolver::bash::STACK;
 use crate::support::{bash, Scripts};
 use nesting::{nest, Recorded};
 use profile::{Profile, Span};
-use recording::Recording;
+use recording::records;
 
 const BASHPROF_BASH: &str = include_str!("bash/bashprof.bash");
 
+/// The session is what the run heard. Which shell said it, and when, is on
+/// every message already, so reading is a pass over them rather than a machine
+/// kept up as they arrive.
 struct Profiling;
 
 impl Rig for Profiling {
-    type Session = Recording;
+    type Session = Vec<Line>;
 
     fn startup(&self) -> Startup {
         Startup { bash: format!("{STACK}\n{BASHPROF_BASH}"), ..Default::default() }
     }
 
-    fn open(&self) -> Result<Recording, Failure> {
-        Ok(Recording::default())
+    fn open(&self) -> Result<Vec<Line>, Failure> {
+        Ok(Vec::new())
     }
 
-    fn hear(&self, recording: &mut Recording, said: Line) -> Result<(), Failure> {
-        recording.hear(&said)
+    fn hear(&self, heard: &mut Vec<Line>, said: Line) -> Result<(), Failure> {
+        heard.push(said);
+        Ok(())
     }
 }
 
@@ -57,10 +61,10 @@ impl Rig for Profiling {
 /// which is what each test below does next.
 fn profiled(script: &str) -> (Vec<Recorded>, ExitStatus) {
     let scripts = Scripts::of(&[("subject.bash", script)]);
-    let (recording, status) =
+    let (heard, status) =
         run(&Profiling, &bash(scripts.at("subject.bash"))).unwrap().whole().unwrap();
 
-    (nest(recording.records()), status)
+    (records(&heard).and_then(nest).expect("the instrument's own messages"), status)
 }
 
 /// The labels of the calls that never ended.
@@ -206,6 +210,48 @@ fn a_call_measured_in_a_subshell_nests_where_it_was_made() {
     let labels = a.children.iter().map(|span| span.label.as_str()).collect::<Vec<_>>();
     assert_eq!(labels, ["plain", "forked"]);
     assert_ne!(at(a, &["forked"]).pid, a.pid, "and it did run in a shell of its own");
+}
+
+/// Two forks of one line make calls whose sites are identical and whose
+/// windows overlap, so neither the stack nor the clock can say which is which.
+/// The shell each ran in can.
+#[test]
+fn concurrent_forks_of_one_line_keep_their_own_calls() {
+    let (recorded, status) = profiled(
+        r#"
+        f__work() {
+            sleep "$1"
+            BASHPROF_TIME_CPS inner true
+            sleep 0.1
+        }
+
+        f__A() {
+            for delay in 0.05 0.01; do
+                ( BASHPROF_TIME_CPS turn f__work "$delay" ) &
+            done
+            wait
+        }
+
+        BASHPROF_TIME_CPS a f__A
+        "#,
+    );
+
+    assert_eq!(status, ExitStatus::Code(0));
+    println!("as recorded:\n{}\n", Recorded::render(&recorded));
+
+    let profile = Profile::of(&recorded).expect("every call ended");
+    let a = &profile.roots[0];
+    assert_eq!(a.children.len(), 2, "one measurement per fork\n{profile}");
+
+    for turn in &a.children {
+        assert_eq!(turn.label, "turn");
+        assert_eq!(turn.children.len(), 1, "the call made in its own shell\n{profile}");
+        assert_eq!(turn.children[0].pid, turn.pid, "and no other's\n{profile}");
+    }
+
+    let together: u64 = a.children.iter().map(Span::inclusive).sum();
+    assert!(together > a.inclusive(), "the two ran at once, so their windows overlap\n{profile}");
+    assert!(a.exclusive() < a.inclusive(), "and what neither covered is a's own\n{profile}");
 }
 
 /// Where each call was made, which the nesting alone does not say: two calls
