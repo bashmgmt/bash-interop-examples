@@ -6,6 +6,7 @@
 //! | [`answering`] | a session that answers questions from what it has heard |
 //! | [`streaming`] | a session that keeps nothing and holds a resource |
 //! | [`snapshotting`] | reusing another tool's instrument and decoder |
+//! | [`bashprof`] | timing a tree of calls, sharing the frame walk |
 //!
 //! Every one of them is the same pieces: a session type, `open`, whichever of
 //! `hear`/`answer`/`end` it cares about, and `bash` if it needs a word of its
@@ -17,6 +18,8 @@ mod answering;
 mod listening;
 mod snapshotting;
 mod streaming;
+mod sync_protocol;
+mod bashprof;
 
 #[path = "../support/mod.rs"]
 mod support;

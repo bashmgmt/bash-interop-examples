@@ -112,6 +112,8 @@ impl Rig for Choosing {
     }
 
     fn answer(&self, session: &mut Conversation, asked: Line) -> Result<Answer, Failure> {
+        // taken from the generic "answering" example unchanged for now
+
         let phase = asked.words.last().cloned().unwrap_or_default();
         let step = self.steps.join(format!("step.{}.{}.bash", asked.pid, asked.seq));
         session.heard.push(asked);
@@ -139,6 +141,7 @@ impl Rig for Choosing {
 
 #[test]
 fn test_sync_protocol() {
+    
     eprintln!("test_sync_protocol: start");
 }
 
