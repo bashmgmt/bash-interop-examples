@@ -50,7 +50,11 @@ impl Rig for Logging {
 fn a_session_may_hold_a_resource_and_keep_no_messages() {
     let scripts = Scripts::of(&[(
         "main.bash",
-        "BC_INSTR say REC one\n( BC_INSTR say REC from-a-subshell )\nBC_INSTR say REC two\n",
+        r#"
+        BC_INSTR say REC one
+        ( BC_INSTR say REC from-a-subshell )
+        BC_INSTR say REC two
+        "#,
     )]);
     let into = scripts.at("said.log");
 
