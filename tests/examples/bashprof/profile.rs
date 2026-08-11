@@ -17,11 +17,16 @@ use hylic::prelude::{treeish, vec_fold, VecFold, VecHeap, FUSED};
 use mb_resolver::bash::rig::{Micros, Pid};
 use mb_resolver::bash::stack::Frame;
 
-use super::recorded::{Call, Ended, Recorded};
+use super::nesting::Recorded;
+use super::record::{Call, Record};
 use super::render;
 
 /// One measured call, and the ones made inside it. Every field is a fact: a
 /// call that had not ended would not be here.
+///
+/// Where the call sits among the others is the tree; what it adds is where it
+/// was made. The rest of the stack it was made on stays on its
+/// [`Call`](super::record::Call), which the recorded forest still holds.
 #[derive(Debug, Clone)]
 pub struct Span {
     pub label: String,
@@ -29,7 +34,6 @@ pub struct Span {
     pub began: Micros,
     pub ended: Micros,
     pub at: Frame,
-    pub outer: Vec<Frame>,
     pub children: Vec<Span>,
 }
 
@@ -53,14 +57,13 @@ impl Span {
         once(self).chain(self.children.iter().flat_map(Span::all)).collect()
     }
 
-    fn of(ended: &Ended, children: Vec<Span>) -> Self {
+    fn of(call: &Call, ended: Micros, children: Vec<Span>) -> Self {
         Self {
-            label: ended.call.label.clone(),
-            pid: ended.call.pid,
-            began: ended.call.began,
-            ended: ended.ended,
-            at: ended.call.at.clone(),
-            outer: ended.call.outer.clone(),
+            label: call.label.clone(),
+            pid: call.pid,
+            began: call.began,
+            ended,
+            at: call.at.clone(),
             children,
         }
     }
@@ -151,8 +154,10 @@ fn salvage(readings: &[Reading]) -> Vec<Span> {
 /// is what pairing the node's own record with [`measured`] says.
 fn reading() -> VecFold<Recorded, Reading> {
     vec_fold(|heap: &VecHeap<Recorded, Reading>| {
-        match (&heap.node.call, measured(&heap.childresults)) {
-            (Right(ended), Some(children)) => Ok(Span::of(ended, children)),
+        match (&heap.node.record, measured(&heap.childresults)) {
+            (Record::Ended { call, ended }, Some(children)) => {
+                Ok(Span::of(call, *ended, children))
+            }
             _ => Err(salvage(&heap.childresults)),
         }
     })
@@ -182,8 +187,6 @@ impl Profile {
 mod tests {
     use std::sync::Arc;
 
-    use either::Either;
-
     use super::*;
 
     fn call(label: &str, began: u64) -> Call {
@@ -196,13 +199,13 @@ mod tests {
         }
     }
 
-    fn node(call: Either<Call, Ended>, children: Vec<Recorded>) -> Recorded {
-        Recorded { call, children: Arc::from(children) }
+    fn node(record: Record, children: Vec<Recorded>) -> Recorded {
+        Recorded { record, children: Arc::from(children) }
     }
 
-    /// The stack pairing cannot produce this — a shell that dies inside a call
-    /// leaves every call above it open too — but the fold reads a data shape
-    /// rather than that builder's output, and is total over one.
+    /// Nesting cannot produce this — a shell that dies inside a call leaves
+    /// every call it was made from open too — but the reading takes a tree,
+    /// not that builder's output, and is total over one.
     ///
     /// The unended child has nothing under it, so it reads as `Err(vec![])`.
     /// Asking whether anything survived would lose it; asking whether every
@@ -210,10 +213,10 @@ mod tests {
     #[test]
     fn a_call_that_ended_around_one_that_did_not_is_no_measurement_either() {
         let forest = [node(
-            Right(Ended { call: call("outer", 0), ended: Micros(100) }),
+            Record::Ended { call: call("outer", 0), ended: Micros(100) },
             vec![
-                node(Right(Ended { call: call("done", 10), ended: Micros(20) }), Vec::new()),
-                node(Left(call("open", 30)), Vec::new()),
+                node(Record::Ended { call: call("done", 10), ended: Micros(20) }, Vec::new()),
+                node(Record::Unended(call("open", 30)), Vec::new()),
             ],
         )];
 

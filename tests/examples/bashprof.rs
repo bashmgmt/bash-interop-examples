@@ -12,13 +12,15 @@
 //!
 //! | | |
 //! |---|---|
-//! | [`recorded`] | the form a run yields, and how it shows itself |
-//! | [`recording`] | building it from BEGIN and END |
-//! | [`profile`] | reading it as timings — one hylic fold |
+//! | [`record`] | one call, how it went, and where it sits relative to another |
+//! | [`recording`] | the wire read as flat records — pairing only |
+//! | [`nesting`] | those records read as a tree, by the stacks they carry |
+//! | [`profile`] | that tree read as timings — one hylic fold |
 //! | [`render`] | hylic's tree formatter, for either tree |
 
+mod nesting;
 mod profile;
-mod recorded;
+mod record;
 mod recording;
 mod render;
 
@@ -26,8 +28,8 @@ use mb_resolver::bash::rig::{run, ExitStatus, Failure, Line, Rig, Startup};
 use mb_resolver::bash::STACK;
 
 use crate::support::{bash, Scripts};
+use nesting::{nest, Recorded};
 use profile::{Profile, Span};
-use recorded::Recorded;
 use recording::Recording;
 
 const BASHPROF_BASH: &str = include_str!("bash/bashprof.bash");
@@ -58,7 +60,7 @@ fn profiled(script: &str) -> (Vec<Recorded>, ExitStatus) {
     let (recording, status) =
         run(&Profiling, &bash(scripts.at("subject.bash"))).unwrap().whole().unwrap();
 
-    (recording.recorded(), status)
+    (nest(recording.records()), status)
 }
 
 /// The labels of the calls that never ended.
@@ -115,6 +117,7 @@ const NESTED: &str = r#"
     BASHPROF_TIME_CPS outer f__outer
     "#;
 
+
 /// A µs budget for scheduling and for the `sleep` each pause forks. Wide,
 /// because the bound it guards only has to separate `a`'s own two pauses from
 /// the whole tree's time — an order of magnitude apart.
@@ -124,15 +127,11 @@ const SLACK: u64 = 60_000;
 fn measurements_nest_the_way_the_calls_do() {
     let (recorded, status) = profiled(TREE);
     assert_eq!(status, ExitStatus::Code(0));
-
-    // Every call ended, so reading the forest yields a profile and not an
-    // error — and from here on no measurement is conditional.
     println!("as recorded:\n{}\n", Recorded::render(&recorded));
 
     let profile = Profile::of(&recorded).expect("every call that began also ended");
     println!("as timings:\n{profile}");
 
-    // The tree fell out of the nesting; nothing on the wire identified a pair.
     assert_eq!(profile.roots.len(), 1, "one outermost measurement");
     let a = &profile.roots[0];
     assert_eq!(a.label, "a");
@@ -143,11 +142,16 @@ fn measurements_nest_the_way_the_calls_do() {
     assert_eq!(labels(at(a, &["e"])), ["f"]);
     assert!(labels(at(a, &["b", "c"])).is_empty());
 
-    let spans = a.all();
-    assert_eq!(spans.len(), 6);
-    assert!(spans.iter().all(|span| span.pid == a.pid), "one shell produced all of it");
+    assert_eq!(a.all().len(), 6);
+    assert!(a.all().iter().all(|span| span.pid == a.pid), "one shell produced all of it");
+}
 
-    // Each span covers at least what it slept for, its children included.
+#[test]
+fn a_spans_time_covers_its_own_work_and_everything_it_called() {
+    let recorded = profiled(TREE).0;
+    let profile = Profile::of(&recorded).expect("a complete profile");
+    let a = &profile.roots[0];
+
     for (path, slept) in [
         (&["b", "c"][..], 30_000),
         (&["b", "d"][..], 40_000),
@@ -165,28 +169,49 @@ fn measurements_nest_the_way_the_calls_do() {
         );
     }
 
-    // A span's own time is what it did outside its measured children — here,
-    // the two unmeasured pauses in `f__A`.
     assert!(
         (40_000..40_000 + SLACK).contains(&a.exclusive()),
-        "a's own time is its two 20 ms pauses, got {} µs\n{profile}",
+        "a's own time is the two 20 ms pauses in f__A, got {} µs\n{profile}",
         a.exclusive()
     );
 
-    // A leaf spends everything on itself.
     let leaf = at(a, &["e", "f"]);
-    assert_eq!(leaf.exclusive(), leaf.inclusive(), "nothing measured inside f");
+    assert_eq!(leaf.exclusive(), leaf.inclusive(), "nothing is measured inside f");
 
-    // The whole tree accounts for itself: every µs belongs to exactly one span.
-    let total: u64 = spans.iter().map(|span| span.exclusive()).sum();
+    let total: u64 = a.all().iter().map(|span| span.exclusive()).sum();
     assert_eq!(total, a.inclusive(), "exclusive times partition the root's\n{profile}");
 }
 
-/// The nesting says which spans contain which; the frame walk says *where* in
-/// the parent each call was made. The two agree, and only the second can tell
-/// two calls from one function apart.
+/// A subshell forks the process but not the stack, so a call measured inside
+/// one belongs to the call it was made from. The shell it ran in cannot say
+/// that — its messages arrive in a lane of their own — and the stack can.
 #[test]
-fn the_captured_stack_corroborates_the_tree() {
+fn a_call_measured_in_a_subshell_nests_where_it_was_made() {
+    let (recorded, status) = profiled(
+        r#"
+        f__A() {
+            BASHPROF_TIME_CPS plain true
+            ( BASHPROF_TIME_CPS forked true )
+        }
+        BASHPROF_TIME_CPS a f__A
+        "#,
+    );
+
+    assert_eq!(status, ExitStatus::Code(0));
+    let profile = Profile::of(&recorded).expect("every call ended");
+
+    assert_eq!(profile.roots.len(), 1, "one outermost measurement, not one per shell");
+    let a = &profile.roots[0];
+
+    let labels = a.children.iter().map(|span| span.label.as_str()).collect::<Vec<_>>();
+    assert_eq!(labels, ["plain", "forked"]);
+    assert_ne!(at(a, &["forked"]).pid, a.pid, "and it did run in a shell of its own");
+}
+
+/// Where each call was made, which the nesting alone does not say: two calls
+/// from one function are told apart by their line.
+#[test]
+fn a_span_says_where_its_call_was_made() {
     let recorded = profiled(TREE).0;
     let profile = Profile::of(&recorded).expect("a complete profile");
     let a = &profile.roots[0];
@@ -198,31 +223,7 @@ fn the_captured_stack_corroborates_the_tree() {
     assert_eq!(at(a, &["b", "d"]).at.funcname, "f__B");
     assert_eq!(at(a, &["e", "f"]).at.funcname, "f__E");
 
-    assert_ne!(
-        at(a, &["b", "c"]).at.lineno,
-        at(a, &["b", "d"]).at.lineno,
-        "two calls from one function, told apart by their line"
-    );
-
-    // Every parent's call site appears above every child's, which is the
-    // nesting seen from the shell's own stack rather than from the pairing.
-    fn agrees(span: &Span) {
-        for child in &span.children {
-            let above: Vec<&str> =
-                child.outer.iter().map(|frame| frame.funcname.as_str()).collect();
-
-            assert!(
-                above.contains(&span.at.funcname.as_str()),
-                "{:?} is inside {:?}, but {:?} is not above {:?} in {above:?}",
-                child.label,
-                span.label,
-                span.at.funcname,
-                child.at.funcname
-            );
-            agrees(child);
-        }
-    }
-    agrees(a);
+    assert_ne!(at(a, &["b", "c"]).at.lineno, at(a, &["b", "d"]).at.lineno);
 }
 
 /// A measured call is run unguarded, so `set -e` ends the subject where it
@@ -247,29 +248,10 @@ fn a_call_the_shell_died_inside_is_an_error_carrying_the_rest() {
     assert_eq!(unended(&recorded), ["doomed"], "the forest says so on its own");
 
     let unfinished = Profile::of(&recorded).expect_err("the shell died inside a call");
-
-    // The measurement that completed is no less true for the run ending badly.
     let resolved = &unfinished.resolved;
+
     assert_eq!(resolved.roots.len(), 1);
-    assert_eq!(resolved.roots[0].label, "ok");
-}
-
-/// The error's message is the tree as recorded, so what completed and what did
-/// not are shown together and in place.
-#[test]
-fn the_error_renders_the_tree_it_was_recorded_as() {
-    let recorded = profiled(NESTED).0;
-    let unfinished = Profile::of(&recorded).expect_err("the outer call never ended");
-
-    let shown = unfinished.to_string();
-    println!("{shown}");
-
-    // `outer` was called from the script body and never came back; `inner`
-    // was called from inside it and did. Both are in the tree, in place.
-    assert!(shown.contains("outer NEVER ENDED at main@"), "{shown}");
-    assert!(shown.contains("inner "), "the completed call is shown too: {shown}");
-    assert!(shown.contains("µs at f__outer@"), "with the duration it did have: {shown}");
-    assert!(!shown.contains("inner NEVER"), "{shown}");
+    assert_eq!(resolved.roots[0].label, "ok", "no less true for the run ending badly");
 }
 
 /// A call that completed inside one that did not is still a measurement, so it
@@ -280,9 +262,22 @@ fn a_completed_call_survives_an_enclosing_one_that_did_not() {
     assert_eq!(unended(&recorded), ["outer"]);
 
     let unfinished = Profile::of(&recorded).expect_err("the outer call never ended");
+
     assert_eq!(
         unfinished.resolved.roots.iter().map(|span| span.label.as_str()).collect::<Vec<_>>(),
-        ["inner"],
-        "the inner measurement is a fact; the one around it is not"
+        ["inner"]
     );
+}
+
+/// The error's message is the tree as recorded, so what completed and what did
+/// not are shown together and in place.
+#[test]
+fn the_error_renders_the_tree_it_was_recorded_as() {
+    let recorded = profiled(NESTED).0;
+    let shown = Profile::of(&recorded).expect_err("the outer call never ended").to_string();
+    println!("{shown}");
+
+    assert!(shown.contains("outer NEVER ENDED at main@"), "{shown}");
+    assert!(shown.contains("µs at f__outer@"), "the completed one, with its duration: {shown}");
+    assert!(!shown.contains("inner NEVER"), "{shown}");
 }
