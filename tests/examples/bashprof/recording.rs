@@ -1,156 +1,144 @@
-//! The wire read as flat records, each already placed.
+//! The wire read as flat records.
 //!
-//! The instrument's own shape does the placing. `BASHPROF_TIME_CPS` sends
-//! BEGIN, runs the call, sends END — so within one shell the calls are a
-//! stack, a BEGIN belongs to whatever that shell had open, and END closes it.
-//! Nothing has to be searched for, and nothing can be ambiguous: a shell's
-//! open calls are a chain, never a set.
+//! Every BEGIN carries the name its shell gave the call and the name of the
+//! call it was made inside of, so the tree is already on the wire. Reading it
+//! is one pass over everything the run heard, with a map from name to call —
+//! no grouping by shell, no pairing by position, and nothing that depends on
+//! the order messages arrived in.
 //!
-//! A fork is the one thing that stack does not cover. It inherits the frames
-//! but begins a stack of its own, so a call it opens with attaches into the
-//! shell it was forked from — and there the inherited frames say which call,
-//! since a shell that ran on after forking has since begun others they do not
-//! match.
+//! What this pass owes the rest of the module is that the names hold up: a
+//! name is given once, ended once, and every name a call points at is one
+//! that was given. Each is a lookup, and each failure is the instrument's.
 
-use std::iter::successors;
+use std::collections::HashMap;
 
-use mb_resolver::bash::rig;
 use mb_resolver::bash::rig::{field, Failure, Line, Micros};
 use mb_resolver::bash::stack::Columns;
 
-use super::record::{Call, Placed, Record};
+use super::record::{Call, Id, Record};
 
 /// The word this instrument's messages begin with.
 const TAG: &str = "TIME_CPS";
 
-/// Every call the run made, each paired with the call it was made inside of.
-///
-/// Shells are read in the order they joined, which is the order they can be
-/// read in: a shell's parent spoke before forking it, so by the time a fork
-/// asks what it belongs to, that shell has been read.
-pub fn records(heard: &[Line]) -> Result<Vec<Placed>, Failure> {
-    let shells = rig::shells(heard);
-    let forked_from = rig::forked_from(&shells);
-    let mut opened: Vec<Open> = Vec::new();
+/// Every call the run made, in the order they began.
+pub fn records(heard: &[Line]) -> Result<Vec<Record>, Failure> {
+    let mut reading = Reading::default();
 
-    for (index, shell) in shells.iter().enumerate() {
-        read(shell, index, &forked_from, &mut opened)?;
+    for line in heard {
+        reading.hear(line)?;
     }
 
-    Ok(opened.into_iter().map(Open::settled).collect())
+    reading.settled()
 }
 
-/// A call while its shell is still being read. It gains an end when its END
+/// A call while the run is still being read. It gains an end when its END
 /// arrives, and a shell that dies inside it never sends one.
 struct Open {
-    shell: usize,
     call: Call,
-    inside: Option<usize>,
     ended: Option<Micros>,
 }
 
-impl Open {
-    fn running_at(&self, when: Micros) -> bool {
-        self.call.began <= when
-            && match self.ended {
-                Some(ended) => when <= ended,
-                None => true,
-            }
-    }
+#[derive(Default)]
+struct Reading {
+    opened: Vec<Open>,
 
-    fn settled(self) -> Placed {
-        let Open { call, inside, ended, .. } = self;
-
-        Placed {
-            record: match ended {
-                Some(ended) => Record::Ended { call, ended },
-                None => Record::Unended(call),
-            },
-            inside,
-        }
-    }
+    /// Where each name's call is, which is what makes both an END and a
+    /// parent a lookup rather than a search.
+    at: HashMap<Id, usize>,
 }
 
-/// One shell's messages, appended to what has been read so far.
-fn read(
-    shell: &rig::Shell<'_>,
-    index: usize,
-    forked_from: &[Option<usize>],
-    opened: &mut Vec<Open>,
-) -> Result<(), Failure> {
-    let mut stack: Vec<usize> = Vec::new();
-
-    for line in &shell.lines {
-        let Some(payload) = line.behind(TAG) else { continue };
+impl Reading {
+    /// One message. Anything not this instrument's is someone else's.
+    fn hear(&mut self, line: &Line) -> Result<(), Failure> {
+        let Some(payload) = line.behind(TAG) else { return Ok(()) };
         let Some((kind, rest)) = payload.split_first() else {
             return Err(reading("an empty TIME_CPS message"));
         };
 
         match kind.as_str() {
-            "BEGIN" => {
-                let call = began(line, rest)?;
-                let inside = match stack.last() {
-                    Some(&enclosing) => Some(enclosing),
-                    None => forked_into(&call, index, forked_from, opened),
-                };
-
-                stack.push(opened.len());
-                opened.push(Open { shell: index, call, inside, ended: None });
-            }
-
-            // An unbalanced END is a defect in the instrument, not a shape to
-            // carry, so it ends the run rather than reaching a caller.
-            "END" => {
-                let unbalanced =
-                    || reading(format!("an END from pid {} with no BEGIN", shell.pid));
-
-                opened[stack.pop().ok_or_else(unbalanced)?].ended = Some(line.sent_at);
-            }
-
-            other => return Err(reading(format!("unknown kind {other:?}"))),
+            "BEGIN" => self.begin(line, rest),
+            "END" => self.end(named(rest)?, line.sent_at),
+            other => Err(reading(format!("unknown kind {other:?}"))),
         }
     }
 
-    Ok(())
+    /// A name is given once. Two calls under one name would close each other's
+    /// spans and claim each other's children, so it is refused here rather
+    /// than read as a tree nothing produced.
+    fn begin(&mut self, line: &Line, rest: &[String]) -> Result<(), Failure> {
+        let call = began(line, rest)?;
+
+        if self.at.insert(call.id.clone(), self.opened.len()).is_some() {
+            return Err(reading(format!("a second call named {}", call.id)));
+        }
+
+        self.opened.push(Open { call, ended: None });
+        Ok(())
+    }
+
+    fn end(&mut self, id: Id, ended: Micros) -> Result<(), Failure> {
+        let unknown = || reading(format!("an END for {id}, which never began"));
+        let open = &mut self.opened[*self.at.get(&id).ok_or_else(unknown)?];
+
+        if open.ended.is_some() {
+            return Err(reading(format!("a second END for {id}")));
+        }
+
+        open.ended = Some(ended);
+        Ok(())
+    }
+
+    /// The calls as records, oldest first — once every name they point at is
+    /// one that was given.
+    fn settled(self) -> Result<Vec<Record>, Failure> {
+        let Reading { opened, at } = self;
+
+        let named_but_absent = opened
+            .iter()
+            .filter_map(|open| open.call.inside.as_ref().map(|inside| (&open.call.id, inside)))
+            .find(|(_, inside)| !at.contains_key(inside));
+
+        if let Some((call, missing)) = named_but_absent {
+            return Err(reading(format!("{call} was made inside {missing}, which never began")));
+        }
+
+        let mut records: Vec<Record> = opened
+            .into_iter()
+            .map(|Open { call, ended }| match ended {
+                Some(ended) => Record::Ended { call, ended },
+                None => Record::Unended(call),
+            })
+            .collect();
+
+        records.sort_by_key(|record| (record.call().began, record.call().pid.0));
+        Ok(records)
+    }
 }
 
-/// Where a call that opens its shell's stack attaches: the innermost call it
-/// was made inside of that was still running, in the nearest shell this one
-/// was forked from that has one.
-///
-/// The frames are what pick it, and here rather than anywhere else. A shell
-/// blocked on a fork has the same call open the whole time; one that forked in
-/// the background may have begun another since, and a call begun after the
-/// fork is not one this call's inherited site was ever made under.
-fn forked_into(
-    call: &Call,
-    shell: usize,
-    forked_from: &[Option<usize>],
-    opened: &[Open],
-) -> Option<usize> {
-    successors(forked_from[shell], |&above| forked_from[above]).find_map(|ancestor| {
-        // One shell's calls are read in the order they began, so the most
-        // recent of them that is still running is the innermost.
-        opened
-            .iter()
-            .enumerate()
-            .rev()
-            .find(|(_, open)| {
-                open.shell == ancestor
-                    && open.running_at(call.began)
-                    && call.made_inside(&open.call)
-            })
-            .map(|(index, _)| index)
-    })
+/// The `id` an END names.
+fn named(rest: &[String]) -> Result<Id, Failure> {
+    field(rest, "id").map(|id| Id(id.to_string())).ok_or_else(|| reading("a message with no id"))
 }
 
 fn began(line: &Line, rest: &[String]) -> Result<Call, Failure> {
-    let label = field(rest, "label").ok_or_else(|| reading("no label"))?.to_string();
+    let word = |key: &str| {
+        field(rest, key).ok_or_else(|| reading(format!("a BEGIN with no {key:?}"))).map(str::to_string)
+    };
 
     let mut frames = Columns::of(rest)?.frames()?.into_iter();
     let at = frames.next().ok_or_else(|| reading("a walk with no frames"))?;
 
-    Ok(Call { label, pid: line.pid, began: line.sent_at, at, outer: frames.collect() })
+    Ok(Call {
+        id: named(rest)?,
+        // The outermost call is made inside nothing, and says so with a name
+        // it leaves empty.
+        inside: Some(word("inside")?).filter(|inside| !inside.is_empty()).map(Id),
+        label: word("label")?,
+        pid: line.pid,
+        began: line.sent_at,
+        at,
+        outer: frames.collect(),
+    })
 }
 
 fn reading(what: impl Into<String>) -> Failure {

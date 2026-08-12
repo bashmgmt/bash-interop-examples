@@ -1,19 +1,20 @@
-//! Placed records read as a tree.
+//! Flat records read as a tree.
 //!
-//! The relation is already in them — each says which call it was made inside
-//! of, on the authority of the shell that produced it — so what is left is the
-//! unfold. A [`Treeish`](hylic::graph::Treeish) over "whose children are
-//! these" and a fold that materialises them, exactly as
-//! `resolve::pipeline::resolution` materialises a `Resolution`.
+//! Each record names the call it was made inside of, so the edges are given
+//! and the shape follows from one index over them: which records name each
+//! call. A [`Treeish`](hylic::graph::Treeish) over that index is the tree, and
+//! a fold materialises it, exactly as `resolve::pipeline::resolution`
+//! materialises a `Resolution`.
 //!
 //! Nothing here asks whether a call ended. Where a call sits does not depend
 //! on how it went.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use hylic::prelude::{treeish, vec_fold, VecHeap, FUSED};
 
-use super::record::{Call, Placed, Record};
+use super::record::{Call, Id, Record};
 use super::render;
 
 /// A call, and everything called inside it.
@@ -56,53 +57,76 @@ impl Recorded {
     }
 }
 
-/// Which of these were made inside `of`, in the order they began. `None` is
-/// the forest's own roots, and the two are one question.
-fn made_inside(placed: &[Placed], of: Option<usize>) -> Vec<usize> {
-    let mut found: Vec<usize> = placed
-        .iter()
-        .enumerate()
-        .filter(|(_, one)| one.inside == of)
-        .map(|(index, _)| index)
-        .collect();
+/// The records, and the one index the shape asks of them: which of them each
+/// call was told it holds. Records come in the order they began, so every
+/// list built from them is in that order too.
+struct Nesting {
+    records: Vec<Record>,
+    inside: HashMap<Id, Vec<usize>>,
+}
 
-    found.sort_by_key(|&index| placed[index].record.call().began);
-    found
+impl Nesting {
+    fn of(records: Vec<Record>) -> Self {
+        let mut inside: HashMap<Id, Vec<usize>> = HashMap::new();
+
+        for (index, record) in records.iter().enumerate() {
+            if let Some(outer) = &record.call().inside {
+                inside.entry(outer.clone()).or_default().push(index);
+            }
+        }
+
+        Self { records, inside }
+    }
+
+    fn children(&self, of: &Id) -> &[usize] {
+        self.inside.get(of).map_or(&[], Vec::as_slice)
+    }
+
+    /// The calls nothing measured encloses.
+    fn roots(&self) -> Vec<usize> {
+        self.records
+            .iter()
+            .enumerate()
+            .filter(|(_, record)| record.call().inside.is_none())
+            .map(|(index, _)| index)
+            .collect()
+    }
 }
 
 /// One record, and the neighbourhood it takes to ask for its children.
 #[derive(Clone)]
 struct At {
     index: usize,
-    placed: Arc<Vec<Placed>>,
+    nesting: Arc<Nesting>,
 }
 
 impl At {
     fn record(&self) -> &Record {
-        &self.placed[self.index].record
+        &self.nesting.records[self.index]
     }
 
     fn children(&self) -> Vec<At> {
-        made_inside(&self.placed, Some(self.index))
-            .into_iter()
-            .map(|index| At { index, placed: self.placed.clone() })
+        self.nesting
+            .children(&self.record().call().id)
+            .iter()
+            .map(|&index| At { index, nesting: self.nesting.clone() })
             .collect()
     }
 }
 
-/// Read placed records as the forest they describe.
-pub fn nest(placed: Vec<Placed>) -> Vec<Recorded> {
-    let roots = made_inside(&placed, None);
-    let placed = Arc::new(placed);
+/// Read flat records as the forest their names describe.
+pub fn nest(records: Vec<Record>) -> Vec<Recorded> {
+    let nesting = Arc::new(Nesting::of(records));
     let shape = treeish(At::children);
     let build = vec_fold(|heap: &VecHeap<At, Recorded>| Recorded {
         record: heap.node.record().clone(),
         children: Arc::from(heap.childresults.as_slice()),
     });
 
-    roots
+    nesting
+        .roots()
         .into_iter()
-        .map(|index| At { index, placed: placed.clone() })
+        .map(|index| At { index, nesting: nesting.clone() })
         .map(|root| FUSED.run(&build, &shape, &root))
         .collect()
 }

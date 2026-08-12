@@ -18,7 +18,7 @@ use mb_resolver::bash::rig::{Micros, Pid};
 use mb_resolver::bash::stack::Frame;
 
 use super::nesting::Recorded;
-use super::record::{Call, Record};
+use super::record::{Call, Id, Record};
 use super::render;
 
 /// One measured call, and the ones made inside it. Every field is a fact: a
@@ -29,6 +29,10 @@ use super::render;
 /// [`Call`](super::record::Call), which the recorded forest still holds.
 #[derive(Debug, Clone)]
 pub struct Span {
+    /// The name the shell gave this call, which is the only thing that tells
+    /// two measurements of one line apart.
+    pub id: Id,
+
     pub label: String,
     pub pid: Pid,
     pub began: Micros,
@@ -82,6 +86,7 @@ impl Span {
 
     fn of(call: &Call, ended: Micros, children: Vec<Span>) -> Self {
         Self {
+            id: call.id.clone(),
             label: call.label.clone(),
             pid: call.pid,
             began: call.began,
@@ -215,6 +220,8 @@ mod tests {
 
     fn call(label: &str, began: u64) -> Call {
         Call {
+            id: Id(format!("1.{began}")),
+            inside: None,
             label: label.into(),
             pid: Pid(1),
             began: Micros(began),

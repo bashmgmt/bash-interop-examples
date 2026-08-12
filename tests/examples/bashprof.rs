@@ -5,15 +5,20 @@
 //! already stamps every message with the sending shell's `$EPOCHREALTIME`, and
 //! a span is the interval between two of them.
 //!
-//! What a run yields is the tree as recorded: every call that began, whether
-//! or not it ended. Reading that as timings is a separate step, and the
+//! Nor is anything inferred. Each call names itself and hands that name to
+//! everything it runs — through the one frame bash gives it, which a fork
+//! inherits — so every BEGIN says which call it was made inside of and the
+//! tree travels on the wire.
+//!
+//! What a run yields is that tree as recorded: every call that began, whether
+//! or not it ended. Reading it as timings is a separate step, and the
 //! caller's — a test bails on a run that died mid-call, a tool reporting what
 //! it has need not.
 //!
 //! | | |
 //! |---|---|
 //! | [`record`] | one call, how it went, and the call it was made inside of |
-//! | [`recording`] | the wire read as flat records, each already placed |
+//! | [`recording`] | the wire read as flat records — one pass and a map |
 //! | [`nesting`] | those records read as a tree — one hylic unfold |
 //! | [`profile`] | that tree read as timings — one hylic fold |
 //! | [`render`] | hylic's tree formatter, for either tree |
@@ -24,12 +29,15 @@ mod record;
 mod recording;
 mod render;
 
+use std::collections::HashSet;
+
 use mb_resolver::bash::rig::{run, ExitStatus, Failure, Line, Rig, Startup};
 use mb_resolver::bash::STACK;
 
 use crate::support::{bash, Scripts};
 use nesting::{nest, Recorded};
 use profile::{Profile, Span};
+use record::Call;
 use recording::records;
 
 const BASHPROF_BASH: &str = include_str!("bash/bashprof.bash");
@@ -70,6 +78,14 @@ fn profiled(script: &str) -> (Vec<Recorded>, ExitStatus) {
 /// The labels of the calls that never ended.
 fn unended(forest: &[Recorded]) -> Vec<&str> {
     Recorded::unended(forest).iter().map(|call| call.label.as_str()).collect()
+}
+
+/// Every call in a recorded forest, outermost first.
+fn calls(forest: &[Recorded]) -> Vec<&Call> {
+    forest
+        .iter()
+        .flat_map(|node| std::iter::once(node.call()).chain(calls(&node.children)))
+        .collect()
 }
 
 /// Follow labels down from a root. The tree's shape is what is under test, so
@@ -245,6 +261,8 @@ fn concurrent_forks_of_one_line_keep_their_own_calls() {
     let a = &profile.roots[0];
     assert_eq!(a.children.len(), 2, "one measurement per fork\n{profile}");
 
+    assert_ne!(a.children[0].id, a.children[1].id, "one line, two calls, two names");
+
     for turn in &a.children {
         assert_eq!(turn.label, "turn");
         assert_eq!(turn.children.len(), 1, "the call made in its own shell\n{profile}");
@@ -256,11 +274,11 @@ fn concurrent_forks_of_one_line_keep_their_own_calls() {
     assert!(a.exclusive() < a.inclusive(), "and what neither covered is a's own\n{profile}");
 }
 
-/// A fork whose own shell has nothing open looks past it. `deep` was made
-/// inside `a` — the only measured call still running anywhere above it — and
-/// the shell between them has since finished its own.
+/// A fork inherits the name in scope where it was made, and so does a fork of
+/// that fork. `deep` belongs to `a` although two process boundaries and a
+/// finished call of the middle shell's lie between them.
 #[test]
-fn a_fork_attaches_to_the_nearest_shell_that_has_a_call_open() {
+fn a_name_is_inherited_through_two_levels_of_forking() {
     let (recorded, status) = profiled(
         r#"
         f__A() {
@@ -285,9 +303,38 @@ fn a_fork_attaches_to_the_nearest_shell_that_has_a_call_open() {
 
     let pids = [a.pid, at(a, &["middle"]).pid, at(a, &["deep"]).pid];
     assert_eq!(
-        pids.iter().collect::<std::collections::HashSet<_>>().len(),
+        pids.iter().collect::<HashSet<_>>().len(),
         3,
-        "three shells, so the walk had somewhere to look past\n{profile}"
+        "three shells, so the name really crossed two forks\n{profile}"
+    );
+}
+
+/// Two calls of one line differ in nothing a reader can see except the name
+/// their shell gave them — and that name is what the tree was built from.
+#[test]
+fn every_measurement_has_a_name_of_its_own() {
+    let recorded = profiled(TREE).0;
+    let profile = Profile::of(&recorded).expect("a complete profile");
+    let a = &profile.roots[0];
+
+    let names: HashSet<&str> = a.all().iter().map(|span| span.id.0.as_str()).collect();
+    assert_eq!(names.len(), 6, "six calls, six names\n{profile}");
+}
+
+/// The walk that arrives is the subject's whole stack with exactly the
+/// instrument's two frames dropped: `__bc_stack`'s own and the wrapper's. The
+/// wrapper's *other* frames stay, because they are where the calls above this
+/// one are executing.
+#[test]
+fn a_call_carries_the_whole_stack_it_was_made_on() {
+    let recorded = profiled(TREE).0;
+    let c = calls(&recorded).into_iter().find(|call| call.label == "c").expect("c was measured");
+
+    assert_eq!(c.at.funcname, "f__B", "where the call was made");
+    assert_eq!(
+        c.outer.iter().map(|frame| frame.funcname.as_str()).collect::<Vec<_>>(),
+        ["BASHPROF_TIME_CPS", "f__A", "BASHPROF_TIME_CPS", "main"],
+        "and everything above it"
     );
 }
 
