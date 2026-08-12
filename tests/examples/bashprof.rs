@@ -1,68 +1,15 @@
-//! Timing a tree of calls, in continuation-passing style.
+//! Timing a tree of calls in a real shell.
 //!
-//! `BASHPROF_TIME_CPS <label> <command…>` wraps the call it is given, so a
-//! measurement nests wherever the calls do. Nothing is timed in bash: the wire
-//! already stamps every message with the sending shell's `$EPOCHREALTIME`, and
-//! a span is the interval between two of them.
-//!
-//! Nor is anything inferred. Each call names itself and hands that name to
-//! everything it runs — through the one frame bash gives it, which a fork
-//! inherits — so every BEGIN says which call it was made inside of and the
-//! tree travels on the wire.
-//!
-//! What a run yields is that tree as recorded: every call that began, whether
-//! or not it ended. Reading it as timings is a separate step, and the
-//! caller's — a test bails on a run that died mid-call, a tool reporting what
-//! it has need not.
-//!
-//! | | |
-//! |---|---|
-//! | [`record`] | one call, how it went, and the call it was made inside of |
-//! | [`recording`] | the wire read as flat records — one pass and a map |
-//! | [`nesting`] | those records read as a tree — one hylic unfold |
-//! | [`profile`] | that tree read as timings — one hylic fold |
-//! | [`render`] | hylic's tree formatter, for either tree |
-
-mod nesting;
-mod profile;
-mod record;
-mod recording;
-mod render;
+//! Everything here spawns bash and reads what `mb_resolver::bashprof` makes of
+//! it, over that module's public surface alone. What needs no shell is in
+//! `src/bashprof/tests.rs`.
 
 use std::collections::HashSet;
 
-use mb_resolver::bash::rig::{run, ExitStatus, Failure, Line, Rig, Startup};
-use mb_resolver::bash::STACK;
+use mb_resolver::bash::rig::{run, ExitStatus};
+use mb_resolver::bashprof::{recorded, BashProf, Call, Profile, Recorded, Span};
 
 use crate::support::{bash, Scripts};
-use nesting::{nest, Recorded};
-use profile::{Profile, Span};
-use record::Call;
-use recording::records;
-
-const BASHPROF_BASH: &str = include_str!("bash/bashprof.bash");
-
-/// The session is what the run heard. Which shell said it, and when, is on
-/// every message already, so reading is a pass over them rather than a machine
-/// kept up as they arrive.
-struct Profiling;
-
-impl Rig for Profiling {
-    type Session = Vec<Line>;
-
-    fn startup(&self) -> Startup {
-        Startup { bash: format!("{STACK}\n{BASHPROF_BASH}"), ..Default::default() }
-    }
-
-    fn open(&self) -> Result<Vec<Line>, Failure> {
-        Ok(Vec::new())
-    }
-
-    fn hear(&self, heard: &mut Vec<Line>, said: Line) -> Result<(), Failure> {
-        heard.push(said);
-        Ok(())
-    }
-}
 
 /// Run a script under the profiler. What comes back is the tree as recorded —
 /// every call that began, ended or not. Reading it as timings is the caller's,
@@ -70,9 +17,9 @@ impl Rig for Profiling {
 fn profiled(script: &str) -> (Vec<Recorded>, ExitStatus) {
     let scripts = Scripts::of(&[("subject.bash", script)]);
     let (heard, status) =
-        run(&Profiling, &bash(scripts.at("subject.bash"))).unwrap().whole().unwrap();
+        run(&BashProf, &bash(scripts.at("subject.bash"))).unwrap().whole().unwrap();
 
-    (records(&heard).map(nest).expect("the instrument's own messages"), status)
+    (recorded(&heard).expect("the instrument's own messages"), status)
 }
 
 /// The labels of the calls that never ended.
