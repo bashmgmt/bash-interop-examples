@@ -35,7 +35,7 @@ impl Rig for Logging {
     fn hear(&self, session: &mut Writing, said: Line) -> Result<(), Failure> {
         let at = || format!("writing {}", self.into.display());
 
-        writeln!(session.sink, "{} {}", said.pid, said.words.join(" ")).doing(at)?;
+        writeln!(session.sink, "{} {}", said.sent.pid, said.words.join(" ")).doing(at)?;
         session.written += 1;
 
         Ok(())

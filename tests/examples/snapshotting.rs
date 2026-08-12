@@ -41,7 +41,7 @@ impl Rig for Snapshots {
     fn hear(&self, seen: &mut Self::Session, said: Line) -> Result<(), Failure> {
         let Some(decoded) = Capture::of(&said) else { return Ok(()) };
 
-        seen.push(decoded.doing(|| format!("a snapshot from pid {}", said.pid))?);
+        seen.push(decoded.doing(|| format!("a snapshot from pid {}", said.sent.pid))?);
 
         Ok(())
     }
@@ -63,11 +63,11 @@ fn a_tools_instrument_is_reusable_without_its_command_line() {
 
     let frames: Vec<_> = seen.iter().flat_map(|capture| capture.snapshot.stack.frames()).collect();
     for capture in &seen {
-        assert!(!capture.snapshot.stack.frames().collect::<Vec<_>>().is_empty(), "pid {} says where it is", capture.pid);
+        assert!(!capture.snapshot.stack.frames().collect::<Vec<_>>().is_empty(), "pid {} says where it is", capture.sent.pid);
         assert!(capture.snapshot.state.contains_key("shlvl"), "and which shell it is");
     }
 
-    let shells: HashSet<u32> = seen.iter().map(|capture| capture.pid).collect();
+    let shells: HashSet<u32> = seen.iter().map(|capture| capture.sent.pid.0).collect();
     assert!(shells.len() > 1, "the fixture's subshell and child are shells of their own");
 
     // `BASH_ENV` reaches every shell; a command line would have reached only

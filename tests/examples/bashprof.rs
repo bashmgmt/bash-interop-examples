@@ -39,7 +39,7 @@ fn calls(forest: &[Recorded]) -> Vec<&Call> {
 /// a path that does not exist is a failed assertion rather than a `None`.
 fn at<'a>(root: &'a Span, path: &[&str]) -> &'a Span {
     path.iter().fold(root, |span, label| {
-        span.child(label).unwrap_or_else(|| panic!("no {label:?} under {:?}", span.label))
+        span.child(label).unwrap_or_else(|| panic!("no {label:?} under {:?}", span.call().label))
     })
 }
 
@@ -101,16 +101,16 @@ fn measurements_nest_the_way_the_calls_do() {
 
     assert_eq!(profile.roots.len(), 1, "one outermost measurement");
     let a = &profile.roots[0];
-    assert_eq!(a.label, "a");
+    assert_eq!(a.call().label, "a");
 
-    let labels = |span: &Span| span.children.iter().map(|c| c.label.clone()).collect::<Vec<_>>();
+    let labels = |span: &Span| span.children.iter().map(|c| c.call().label.clone()).collect::<Vec<_>>();
     assert_eq!(labels(a), ["b", "e"]);
     assert_eq!(labels(at(a, &["b"])), ["c", "d"]);
     assert_eq!(labels(at(a, &["e"])), ["f"]);
     assert!(labels(at(a, &["b", "c"])).is_empty());
 
     assert_eq!(a.all().len(), 6);
-    assert!(a.all().iter().all(|span| span.pid == a.pid), "one shell produced all of it");
+    assert!(a.all().iter().all(|span| span.call().sent.pid == a.call().sent.pid), "one shell produced all of it");
 }
 
 #[test]
@@ -131,7 +131,7 @@ fn a_spans_time_covers_its_own_work_and_everything_it_called() {
         assert!(
             span.inclusive() >= slept,
             "{} took {} µs, less than the {slept} µs it slept\n{profile}",
-            span.label,
+            span.call().label,
             span.inclusive()
         );
     }
@@ -170,9 +170,9 @@ fn a_call_measured_in_a_subshell_nests_where_it_was_made() {
     assert_eq!(profile.roots.len(), 1, "one outermost measurement, not one per shell");
     let a = &profile.roots[0];
 
-    let labels = a.children.iter().map(|span| span.label.as_str()).collect::<Vec<_>>();
+    let labels = a.children.iter().map(|span| span.call().label.as_str()).collect::<Vec<_>>();
     assert_eq!(labels, ["plain", "forked"]);
-    assert_ne!(at(a, &["forked"]).pid, a.pid, "and it did run in a shell of its own");
+    assert_ne!(at(a, &["forked"]).call().sent.pid, a.call().sent.pid, "and it did run in a shell of its own");
 }
 
 /// Two forks of one line report identical frames and their windows overlap,
@@ -208,12 +208,12 @@ fn concurrent_forks_of_one_line_keep_their_own_calls() {
     let a = &profile.roots[0];
     assert_eq!(a.children.len(), 2, "one measurement per fork\n{profile}");
 
-    assert_ne!(a.children[0].id, a.children[1].id, "one line, two calls, two names");
+    assert_ne!(a.children[0].call().id, a.children[1].call().id, "one line, two calls, two names");
 
     for turn in &a.children {
-        assert_eq!(turn.label, "turn");
+        assert_eq!(turn.call().label, "turn");
         assert_eq!(turn.children.len(), 1, "the call made in its own shell\n{profile}");
-        assert_eq!(turn.children[0].pid, turn.pid, "and no other's\n{profile}");
+        assert_eq!(turn.children[0].call().sent.pid, turn.call().sent.pid, "and no other's\n{profile}");
     }
 
     let together: u64 = a.children.iter().map(Span::inclusive).sum();
@@ -245,10 +245,10 @@ fn a_name_is_inherited_through_two_levels_of_forking() {
     assert_eq!(profile.roots.len(), 1, "one outermost measurement\n{profile}");
     let a = &profile.roots[0];
 
-    let labels = a.children.iter().map(|span| span.label.as_str()).collect::<Vec<_>>();
+    let labels = a.children.iter().map(|span| span.call().label.as_str()).collect::<Vec<_>>();
     assert_eq!(labels, ["middle", "deep"], "both under a, neither under the other\n{profile}");
 
-    let pids = [a.pid, at(a, &["middle"]).pid, at(a, &["deep"]).pid];
+    let pids = [a.call().sent.pid, at(a, &["middle"]).call().sent.pid, at(a, &["deep"]).call().sent.pid];
     assert_eq!(
         pids.iter().collect::<HashSet<_>>().len(),
         3,
@@ -264,7 +264,7 @@ fn every_measurement_has_a_name_of_its_own() {
     let profile = Profile::of(&recorded).expect("a complete profile");
     let a = &profile.roots[0];
 
-    let names: HashSet<&str> = a.all().iter().map(|span| span.id.0.as_str()).collect();
+    let names: HashSet<&str> = a.all().iter().map(|span| span.call().id.0.as_str()).collect();
     assert_eq!(names.len(), 6, "six calls, six names\n{profile}");
 }
 
@@ -277,9 +277,9 @@ fn a_call_carries_the_whole_stack_it_was_made_on() {
     let recorded = profiled(TREE).0;
     let c = calls(&recorded).into_iter().find(|call| call.label == "c").expect("c was measured");
 
-    assert_eq!(c.stack.at().funcname, "f__B", "where the call was made");
+    assert_eq!(c.stack.at().site.to_string(), "f__B", "where the call was made");
     assert_eq!(
-        c.stack.outer().iter().map(|frame| frame.funcname.as_str()).collect::<Vec<_>>(),
+        c.stack.outer().iter().map(|frame| frame.site.to_string()).collect::<Vec<_>>(),
         ["BASHPROF_TIME_CPS", "f__A", "BASHPROF_TIME_CPS", "main"],
         "and everything above it"
     );
@@ -309,8 +309,8 @@ fn a_wrapper_can_move_the_walk_past_itself() {
     let profile = Profile::of(&recorded).expect("every call ended");
     let a = &profile.roots[0];
 
-    assert_eq!(at(a, &["leaf"]).stack.at().funcname, "f__A", "the subject's site, not the wrapper's");
-    assert_eq!(a.stack.at().funcname, "main", "and the unwrapped call is unaffected\n{profile}");
+    assert_eq!(at(a, &["leaf"]).call().stack.at().site.to_string(), "f__A", "the subject's site, not the wrapper's");
+    assert_eq!(a.call().stack.at().site.to_string(), "main", "and the unwrapped call is unaffected\n{profile}");
 }
 
 /// Where each call was made, which the nesting alone does not say: two calls
@@ -321,14 +321,14 @@ fn a_span_says_where_its_call_was_made() {
     let profile = Profile::of(&recorded).expect("a complete profile");
     let a = &profile.roots[0];
 
-    assert_eq!(a.stack.at().funcname, "main", "the outermost call is in the script's own body");
-    assert_eq!(at(a, &["b"]).stack.at().funcname, "f__A");
-    assert_eq!(at(a, &["e"]).stack.at().funcname, "f__A");
-    assert_eq!(at(a, &["b", "c"]).stack.at().funcname, "f__B");
-    assert_eq!(at(a, &["b", "d"]).stack.at().funcname, "f__B");
-    assert_eq!(at(a, &["e", "f"]).stack.at().funcname, "f__E");
+    assert_eq!(a.call().stack.at().site.to_string(), "main", "the outermost call is in the script's own body");
+    assert_eq!(at(a, &["b"]).call().stack.at().site.to_string(), "f__A");
+    assert_eq!(at(a, &["e"]).call().stack.at().site.to_string(), "f__A");
+    assert_eq!(at(a, &["b", "c"]).call().stack.at().site.to_string(), "f__B");
+    assert_eq!(at(a, &["b", "d"]).call().stack.at().site.to_string(), "f__B");
+    assert_eq!(at(a, &["e", "f"]).call().stack.at().site.to_string(), "f__E");
 
-    assert_ne!(at(a, &["b", "c"]).stack.at().lineno, at(a, &["b", "d"]).stack.at().lineno);
+    assert_ne!(at(a, &["b", "c"]).call().stack.at().lineno, at(a, &["b", "d"]).call().stack.at().lineno);
 }
 
 /// A measured call is run unguarded, so `set -e` ends the subject where it
@@ -356,7 +356,7 @@ fn a_call_the_shell_died_inside_is_an_error_carrying_the_rest() {
     let resolved = &unfinished.resolved;
 
     assert_eq!(resolved.roots.len(), 1);
-    assert_eq!(resolved.roots[0].label, "ok", "no less true for the run ending badly");
+    assert_eq!(resolved.roots[0].call().label, "ok", "no less true for the run ending badly");
 }
 
 /// A call that completed inside one that did not is still a measurement, so it
@@ -369,7 +369,7 @@ fn a_completed_call_survives_an_enclosing_one_that_did_not() {
     let unfinished = Profile::of(&recorded).expect_err("the outer call never ended");
 
     assert_eq!(
-        unfinished.resolved.roots.iter().map(|span| span.label.as_str()).collect::<Vec<_>>(),
+        unfinished.resolved.roots.iter().map(|span| span.call().label.as_str()).collect::<Vec<_>>(),
         ["inner"]
     );
 }

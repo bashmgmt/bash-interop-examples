@@ -115,7 +115,7 @@ impl Rig for Choosing {
         // taken from the generic "answering" example unchanged for now
 
         let phase = asked.words.last().cloned().unwrap_or_default();
-        let step = self.steps.join(format!("step.{}.{}.bash", asked.pid, asked.seq));
+        let step = self.steps.join(format!("step.{}.{}.bash", asked.sent.pid, asked.sent.seq));
         session.heard.push(asked);
 
         match phase.as_str() {

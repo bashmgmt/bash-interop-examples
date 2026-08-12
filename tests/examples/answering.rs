@@ -73,7 +73,7 @@ impl Rig for Choosing {
 
     fn answer(&self, session: &mut Conversation, asked: Line) -> Result<Answer, Failure> {
         let phase = asked.words.last().cloned().unwrap_or_default();
-        let step = self.steps.join(format!("step.{}.{}.bash", asked.pid, asked.seq));
+        let step = self.steps.join(format!("step.{}.{}.bash", asked.sent.pid, asked.sent.seq));
         session.heard.push(asked);
 
         match phase.as_str() {
