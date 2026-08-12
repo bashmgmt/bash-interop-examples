@@ -61,9 +61,9 @@ fn a_tools_instrument_is_reusable_without_its_command_line() {
     // that calls `BASHCAP`, and reads none of its lines, names or counts.
     assert!(!seen.is_empty(), "an instrumented script took at least one snapshot");
 
-    let frames: Vec<_> = seen.iter().flat_map(|capture| &capture.snapshot.frames).collect();
+    let frames: Vec<_> = seen.iter().flat_map(|capture| capture.snapshot.stack.frames()).collect();
     for capture in &seen {
-        assert!(!capture.snapshot.frames.is_empty(), "pid {} says where it is", capture.pid);
+        assert!(!capture.snapshot.stack.frames().collect::<Vec<_>>().is_empty(), "pid {} says where it is", capture.pid);
         assert!(capture.snapshot.state.contains_key("shlvl"), "and which shell it is");
     }
 

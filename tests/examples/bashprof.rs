@@ -277,9 +277,9 @@ fn a_call_carries_the_whole_stack_it_was_made_on() {
     let recorded = profiled(TREE).0;
     let c = calls(&recorded).into_iter().find(|call| call.label == "c").expect("c was measured");
 
-    assert_eq!(c.at.funcname, "f__B", "where the call was made");
+    assert_eq!(c.stack.at().funcname, "f__B", "where the call was made");
     assert_eq!(
-        c.outer.iter().map(|frame| frame.funcname.as_str()).collect::<Vec<_>>(),
+        c.stack.outer().iter().map(|frame| frame.funcname.as_str()).collect::<Vec<_>>(),
         ["BASHPROF_TIME_CPS", "f__A", "BASHPROF_TIME_CPS", "main"],
         "and everything above it"
     );
@@ -309,8 +309,8 @@ fn a_wrapper_can_move_the_walk_past_itself() {
     let profile = Profile::of(&recorded).expect("every call ended");
     let a = &profile.roots[0];
 
-    assert_eq!(at(a, &["leaf"]).at.funcname, "f__A", "the subject's site, not the wrapper's");
-    assert_eq!(a.at.funcname, "main", "and the unwrapped call is unaffected\n{profile}");
+    assert_eq!(at(a, &["leaf"]).stack.at().funcname, "f__A", "the subject's site, not the wrapper's");
+    assert_eq!(a.stack.at().funcname, "main", "and the unwrapped call is unaffected\n{profile}");
 }
 
 /// Where each call was made, which the nesting alone does not say: two calls
@@ -321,14 +321,14 @@ fn a_span_says_where_its_call_was_made() {
     let profile = Profile::of(&recorded).expect("a complete profile");
     let a = &profile.roots[0];
 
-    assert_eq!(a.at.funcname, "main", "the outermost call is in the script's own body");
-    assert_eq!(at(a, &["b"]).at.funcname, "f__A");
-    assert_eq!(at(a, &["e"]).at.funcname, "f__A");
-    assert_eq!(at(a, &["b", "c"]).at.funcname, "f__B");
-    assert_eq!(at(a, &["b", "d"]).at.funcname, "f__B");
-    assert_eq!(at(a, &["e", "f"]).at.funcname, "f__E");
+    assert_eq!(a.stack.at().funcname, "main", "the outermost call is in the script's own body");
+    assert_eq!(at(a, &["b"]).stack.at().funcname, "f__A");
+    assert_eq!(at(a, &["e"]).stack.at().funcname, "f__A");
+    assert_eq!(at(a, &["b", "c"]).stack.at().funcname, "f__B");
+    assert_eq!(at(a, &["b", "d"]).stack.at().funcname, "f__B");
+    assert_eq!(at(a, &["e", "f"]).stack.at().funcname, "f__E");
 
-    assert_ne!(at(a, &["b", "c"]).at.lineno, at(a, &["b", "d"]).at.lineno);
+    assert_ne!(at(a, &["b", "c"]).stack.at().lineno, at(a, &["b", "d"]).stack.at().lineno);
 }
 
 /// A measured call is run unguarded, so `set -e` ends the subject where it
