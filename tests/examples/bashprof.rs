@@ -321,9 +321,10 @@ fn every_measurement_has_a_name_of_its_own() {
     assert_eq!(names.len(), 6, "six calls, six names\n{profile}");
 }
 
-/// The walk is taken at the head of the spine, so what it points at is the
-/// subject's own call site. What the spine contributes to the frames *above*
-/// stays, because that is where the calls above this one are executing.
+/// The layers are aliases, so the instrument is one frame and the walk points
+/// at the subject's own call site. What is above it is the subject's stack
+/// with one frame of ours per enclosing measurement — where that measurement
+/// is executing, and nothing else.
 #[test]
 fn a_call_carries_the_whole_stack_it_was_made_on() {
     let recorded = profiled(TREE).0;
@@ -332,18 +333,7 @@ fn a_call_carries_the_whole_stack_it_was_made_on() {
     assert_eq!(c.at.funcname, "f__B", "where the call was made");
     assert_eq!(
         c.outer.iter().map(|frame| frame.funcname.as_str()).collect::<Vec<_>>(),
-        [
-            "__BASHPROF_TIME_NAMED",
-            "__BASHPROF_WITH_UNIQUE_ID",
-            "__BASHPROF_WITH_STACK",
-            "BASHPROF_TIME_CPS",
-            "f__A",
-            "__BASHPROF_TIME_NAMED",
-            "__BASHPROF_WITH_UNIQUE_ID",
-            "__BASHPROF_WITH_STACK",
-            "BASHPROF_TIME_CPS",
-            "main",
-        ],
+        ["BASHPROF_TIME_CPS", "f__A", "BASHPROF_TIME_CPS", "main"],
         "and everything above it"
     );
 }
