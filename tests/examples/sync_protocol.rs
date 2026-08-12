@@ -44,6 +44,9 @@
 //! `return`, `declare -g`, `source`, `exit`, or any word the rig's own bash
 //! defined. A refusal is a command that says so and returns non-zero.
 
+// Scaffolding for a protocol that is designed above and not yet built.
+#![allow(dead_code, unused_imports, clippy::doc_lazy_continuation)]
+
 use std::path::PathBuf;
 
 use mb_resolver::bash::rig::{field, run, Answer, ExitStatus, Failure, Line, Rig, Startup};
