@@ -321,10 +321,9 @@ fn every_measurement_has_a_name_of_its_own() {
     assert_eq!(names.len(), 6, "six calls, six names\n{profile}");
 }
 
-/// The walk that arrives is the subject's whole stack with exactly the
-/// instrument's two frames dropped: `__bc_stack`'s own and the wrapper's. The
-/// wrapper's *other* frames stay, because they are where the calls above this
-/// one are executing.
+/// The walk is taken at the head of the spine, so what it points at is the
+/// subject's own call site. What the spine contributes to the frames *above*
+/// stays, because that is where the calls above this one are executing.
 #[test]
 fn a_call_carries_the_whole_stack_it_was_made_on() {
     let recorded = profiled(TREE).0;
@@ -333,9 +332,48 @@ fn a_call_carries_the_whole_stack_it_was_made_on() {
     assert_eq!(c.at.funcname, "f__B", "where the call was made");
     assert_eq!(
         c.outer.iter().map(|frame| frame.funcname.as_str()).collect::<Vec<_>>(),
-        ["BASHPROF_TIME_CPS", "f__A", "BASHPROF_TIME_CPS", "main"],
+        [
+            "__BASHPROF_TIME_NAMED",
+            "__BASHPROF_WITH_UNIQUE_ID",
+            "__BASHPROF_WITH_STACK",
+            "BASHPROF_TIME_CPS",
+            "f__A",
+            "__BASHPROF_TIME_NAMED",
+            "__BASHPROF_WITH_UNIQUE_ID",
+            "__BASHPROF_WITH_STACK",
+            "BASHPROF_TIME_CPS",
+            "main",
+        ],
         "and everything above it"
     );
+}
+
+/// A caller that wrapped the public word in a word of its own says how far
+/// past itself the walk should reach. Without the shift, `leaf` would be
+/// recorded as made in `f__measured`, which is nobody's call site.
+#[test]
+fn a_wrapper_can_move_the_walk_past_itself() {
+    let recorded = profiled(
+        r#"
+        f__leaf() { :; }
+
+        f__measured() {
+            local __BASHPROF_STACK_SHIFT=1
+            BASHPROF_TIME_CPS "$@"
+        }
+
+        f__A() { f__measured leaf f__leaf; }
+
+        BASHPROF_TIME_CPS a f__A
+        "#,
+    )
+    .0;
+
+    let profile = Profile::of(&recorded).expect("every call ended");
+    let a = &profile.roots[0];
+
+    assert_eq!(at(a, &["leaf"]).at.funcname, "f__A", "the subject's site, not the wrapper's");
+    assert_eq!(a.at.funcname, "main", "and the unwrapped call is unaffected\n{profile}");
 }
 
 /// Where each call was made, which the nesting alone does not say: two calls
