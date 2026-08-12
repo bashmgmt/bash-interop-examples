@@ -1,67 +1,84 @@
-//! The wire read as flat records.
+//! The wire read as flat records, each already placed.
 //!
-//! The run's messages sort themselves into the shells that sent them, and each
-//! shell's are paired on their own. Within one shell a call either returns or
-//! takes the shell down, so END closes the innermost call still open there — a
-//! stack, and nothing more — and whatever is left open belongs to a shell that
-//! died inside it.
+//! The instrument's own shape does the placing. `BASHPROF_TIME_CPS` sends
+//! BEGIN, runs the call, sends END — so within one shell the calls are a
+//! stack, a BEGIN belongs to whatever that shell had open, and END closes it.
+//! Nothing has to be searched for, and nothing can be ambiguous: a shell's
+//! open calls are a chain, never a set.
 //!
-//! Where a call belongs relative to the others is
-//! [`nesting`](super::nesting)'s, and it reads the stacks and shells recorded
-//! here rather than the order messages arrived in.
+//! A fork is the one thing that stack does not cover. It inherits the frames
+//! but begins a stack of its own, so a call it opens with attaches into the
+//! shell it was forked from — and there the inherited frames say which call,
+//! since a shell that ran on after forking has since begun others they do not
+//! match.
 
 use std::iter::successors;
 
 use mb_resolver::bash::rig;
-use mb_resolver::bash::rig::{field, Failure, Line};
+use mb_resolver::bash::rig::{field, Failure, Line, Micros};
 use mb_resolver::bash::stack::Columns;
 
-use super::record::{Call, Record, Shell};
+use super::record::{Call, Placed, Record};
 
 /// The word this instrument's messages begin with.
 const TAG: &str = "TIME_CPS";
 
-/// Every call the run made, in the order they began.
-pub fn records(heard: &[Line]) -> Result<Vec<Record>, Failure> {
+/// Every call the run made, each paired with the call it was made inside of.
+///
+/// Shells are read in the order they joined, which is the order they can be
+/// read in: a shell's parent spoke before forking it, so by the time a fork
+/// asks what it belongs to, that shell has been read.
+pub fn records(heard: &[Line]) -> Result<Vec<Placed>, Failure> {
     let shells = rig::shells(heard);
-    let lineage = lineage(&shells);
+    let forked_from = rig::forked_from(&shells);
+    let mut opened: Vec<Open> = Vec::new();
 
-    let mut records: Vec<Record> = shells
-        .iter()
-        .zip(&lineage)
-        .map(|(shell, forked_from)| calls(shell, forked_from))
-        .collect::<Result<Vec<_>, _>>()?
-        .concat();
+    for (index, shell) in shells.iter().enumerate() {
+        read(shell, index, &forked_from, &mut opened)?;
+    }
 
-    records.sort_by_key(|record| (record.call().began, record.call().shell.pid.0));
-    Ok(records)
+    Ok(opened.into_iter().map(Open::settled).collect())
 }
 
-/// A shell that spoke, as a call records having run in it.
-fn joined(shell: &rig::Shell<'_>) -> Shell {
-    Shell { pid: shell.pid, joined_at: shell.opened_at }
+/// A call while its shell is still being read. It gains an end when its END
+/// arrives, and a shell that dies inside it never sends one.
+struct Open {
+    shell: usize,
+    call: Call,
+    inside: Option<usize>,
+    ended: Option<Micros>,
 }
 
-/// For each shell, the shells it was forked from, innermost first. The fork
-/// relation points strictly backwards, so following it up terminates.
-fn lineage(shells: &[rig::Shell<'_>]) -> Vec<Vec<Shell>> {
-    let forked_from = rig::forked_from(shells);
+impl Open {
+    fn running_at(&self, when: Micros) -> bool {
+        self.call.began <= when
+            && match self.ended {
+                Some(ended) => when <= ended,
+                None => true,
+            }
+    }
 
-    forked_from
-        .iter()
-        .map(|&of| {
-            successors(of, |&parent| forked_from[parent])
-                .map(|index| joined(&shells[index]))
-                .collect()
-        })
-        .collect()
+    fn settled(self) -> Placed {
+        let Open { call, inside, ended, .. } = self;
+
+        Placed {
+            record: match ended {
+                Some(ended) => Record::Ended { call, ended },
+                None => Record::Unended(call),
+            },
+            inside,
+        }
+    }
 }
 
-/// One shell's messages paired into calls.
-fn calls(shell: &rig::Shell<'_>, forked_from: &[Shell]) -> Result<Vec<Record>, Failure> {
-    let ran_in = joined(shell);
-    let mut open: Vec<Call> = Vec::new();
-    let mut ended: Vec<Record> = Vec::new();
+/// One shell's messages, appended to what has been read so far.
+fn read(
+    shell: &rig::Shell<'_>,
+    index: usize,
+    forked_from: &[Option<usize>],
+    opened: &mut Vec<Open>,
+) -> Result<(), Failure> {
+    let mut stack: Vec<usize> = Vec::new();
 
     for line in &shell.lines {
         let Some(payload) = line.behind(TAG) else { continue };
@@ -70,43 +87,70 @@ fn calls(shell: &rig::Shell<'_>, forked_from: &[Shell]) -> Result<Vec<Record>, F
         };
 
         match kind.as_str() {
-            "BEGIN" => open.push(began(line, rest, ran_in, forked_from)?),
+            "BEGIN" => {
+                let call = began(line, rest)?;
+                let inside = match stack.last() {
+                    Some(&enclosing) => Some(enclosing),
+                    None => forked_into(&call, index, forked_from, opened),
+                };
+
+                stack.push(opened.len());
+                opened.push(Open { shell: index, call, inside, ended: None });
+            }
+
+            // An unbalanced END is a defect in the instrument, not a shape to
+            // carry, so it ends the run rather than reaching a caller.
             "END" => {
                 let unbalanced =
                     || reading(format!("an END from pid {} with no BEGIN", shell.pid));
 
-                ended.push(Record::Ended {
-                    call: open.pop().ok_or_else(unbalanced)?,
-                    ended: line.sent_at,
-                });
+                opened[stack.pop().ok_or_else(unbalanced)?].ended = Some(line.sent_at);
             }
+
             other => return Err(reading(format!("unknown kind {other:?}"))),
         }
     }
 
-    ended.extend(open.into_iter().map(Record::Unended));
-    Ok(ended)
+    Ok(())
 }
 
-fn began(
-    line: &Line,
-    rest: &[String],
-    shell: Shell,
-    forked_from: &[Shell],
-) -> Result<Call, Failure> {
+/// Where a call that opens its shell's stack attaches: the innermost call it
+/// was made inside of that was still running, in the nearest shell this one
+/// was forked from that has one.
+///
+/// The frames are what pick it, and here rather than anywhere else. A shell
+/// blocked on a fork has the same call open the whole time; one that forked in
+/// the background may have begun another since, and a call begun after the
+/// fork is not one this call's inherited site was ever made under.
+fn forked_into(
+    call: &Call,
+    shell: usize,
+    forked_from: &[Option<usize>],
+    opened: &[Open],
+) -> Option<usize> {
+    successors(forked_from[shell], |&above| forked_from[above]).find_map(|ancestor| {
+        // One shell's calls are read in the order they began, so the most
+        // recent of them that is still running is the innermost.
+        opened
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, open)| {
+                open.shell == ancestor
+                    && open.running_at(call.began)
+                    && call.made_inside(&open.call)
+            })
+            .map(|(index, _)| index)
+    })
+}
+
+fn began(line: &Line, rest: &[String]) -> Result<Call, Failure> {
     let label = field(rest, "label").ok_or_else(|| reading("no label"))?.to_string();
 
     let mut frames = Columns::of(rest)?.frames()?.into_iter();
     let at = frames.next().ok_or_else(|| reading("a walk with no frames"))?;
 
-    Ok(Call {
-        label,
-        began: line.sent_at,
-        at,
-        outer: frames.collect(),
-        shell,
-        forked_from: forked_from.to_vec(),
-    })
+    Ok(Call { label, pid: line.pid, began: line.sent_at, at, outer: frames.collect() })
 }
 
 fn reading(what: impl Into<String>) -> Failure {

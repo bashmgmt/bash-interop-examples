@@ -12,9 +12,9 @@
 //!
 //! | | |
 //! |---|---|
-//! | [`record`] | one call, how it went, and where it sits relative to another |
-//! | [`recording`] | the wire read as flat records — one shell's calls at a time |
-//! | [`nesting`] | those records read as a tree, by the stack and shell they carry |
+//! | [`record`] | one call, how it went, and the call it was made inside of |
+//! | [`recording`] | the wire read as flat records, each already placed |
+//! | [`nesting`] | those records read as a tree — one hylic unfold |
 //! | [`profile`] | that tree read as timings — one hylic fold |
 //! | [`render`] | hylic's tree formatter, for either tree |
 
@@ -64,7 +64,7 @@ fn profiled(script: &str) -> (Vec<Recorded>, ExitStatus) {
     let (heard, status) =
         run(&Profiling, &bash(scripts.at("subject.bash"))).unwrap().whole().unwrap();
 
-    (records(&heard).and_then(nest).expect("the instrument's own messages"), status)
+    (records(&heard).map(nest).expect("the instrument's own messages"), status)
 }
 
 /// The labels of the calls that never ended.
@@ -212,9 +212,11 @@ fn a_call_measured_in_a_subshell_nests_where_it_was_made() {
     assert_ne!(at(a, &["forked"]).pid, a.pid, "and it did run in a shell of its own");
 }
 
-/// Two forks of one line make calls whose sites are identical and whose
-/// windows overlap, so neither the stack nor the clock can say which is which.
-/// The shell each ran in can.
+/// Two forks of one line report identical frames and their windows overlap,
+/// and neither costs anything: a fork's calls are its own shell's stack, so
+/// what was made inside each `turn` was settled where it happened. What the
+/// overlap does reach is the arithmetic — together they last longer than the
+/// call that made them.
 #[test]
 fn concurrent_forks_of_one_line_keep_their_own_calls() {
     let (recorded, status) = profiled(
@@ -252,6 +254,41 @@ fn concurrent_forks_of_one_line_keep_their_own_calls() {
     let together: u64 = a.children.iter().map(Span::inclusive).sum();
     assert!(together > a.inclusive(), "the two ran at once, so their windows overlap\n{profile}");
     assert!(a.exclusive() < a.inclusive(), "and what neither covered is a's own\n{profile}");
+}
+
+/// A fork whose own shell has nothing open looks past it. `deep` was made
+/// inside `a` — the only measured call still running anywhere above it — and
+/// the shell between them has since finished its own.
+#[test]
+fn a_fork_attaches_to_the_nearest_shell_that_has_a_call_open() {
+    let (recorded, status) = profiled(
+        r#"
+        f__A() {
+            (
+                BASHPROF_TIME_CPS middle true
+                ( BASHPROF_TIME_CPS deep true )
+            )
+        }
+
+        BASHPROF_TIME_CPS a f__A
+        "#,
+    );
+
+    assert_eq!(status, ExitStatus::Code(0));
+    let profile = Profile::of(&recorded).expect("every call ended");
+
+    assert_eq!(profile.roots.len(), 1, "one outermost measurement\n{profile}");
+    let a = &profile.roots[0];
+
+    let labels = a.children.iter().map(|span| span.label.as_str()).collect::<Vec<_>>();
+    assert_eq!(labels, ["middle", "deep"], "both under a, neither under the other\n{profile}");
+
+    let pids = [a.pid, at(a, &["middle"]).pid, at(a, &["deep"]).pid];
+    assert_eq!(
+        pids.iter().collect::<std::collections::HashSet<_>>().len(),
+        3,
+        "three shells, so the walk had somewhere to look past\n{profile}"
+    );
 }
 
 /// Where each call was made, which the nesting alone does not say: two calls

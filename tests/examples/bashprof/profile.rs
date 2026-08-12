@@ -83,7 +83,7 @@ impl Span {
     fn of(call: &Call, ended: Micros, children: Vec<Span>) -> Self {
         Self {
             label: call.label.clone(),
-            pid: call.shell.pid,
+            pid: call.pid,
             began: call.began,
             ended,
             at: call.at.clone(),
@@ -211,17 +211,15 @@ impl Profile {
 mod tests {
     use std::sync::Arc;
 
-    use super::super::record::Shell;
     use super::*;
 
     fn call(label: &str, began: u64) -> Call {
         Call {
             label: label.into(),
+            pid: Pid(1),
             began: Micros(began),
             at: Frame { funcname: "f".into(), source: "/x.bash".into(), lineno: 1, args: None },
             outer: Vec::new(),
-            shell: Shell { pid: Pid(1), joined_at: Micros(0) },
-            forked_from: Vec::new(),
         }
     }
 
