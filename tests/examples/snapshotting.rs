@@ -11,7 +11,7 @@
 
 use std::collections::HashSet;
 
-use mb_resolver::bash::rig::{Doing, ExitStatus, Failure, Halt, Line, Master, Rig};
+use mb_resolver::bash::rig::{Doing, ExitStatus, Failure, Line, Master, Rig};
 use mb_resolver::bashcap::{instrument, Capture, Tracing};
 
 use crate::fixture;
@@ -38,7 +38,7 @@ impl Rig for Snapshots {
 
     /// Recognise, then decode: `None` is some other tool's message, and a
     /// snapshot that will not decode ends the run.
-    fn hear(&self, seen: &mut Self::Session, said: Line) -> Result<(), Halt> {
+    fn hear(&self, seen: &mut Self::Session, said: Line) -> Result<(), Failure> {
         let Some(decoded) = Capture::of(&said) else { return Ok(()) };
 
         seen.push(decoded.doing(|| format!("a snapshot from pid {}", said.sent.pid))?);

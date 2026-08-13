@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use mb_resolver::bash::rig::{field, Answer, ExitStatus, Failure, Halt, Line, Master, Rig};
+use mb_resolver::bash::rig::{field, Answer, ExitStatus, Failure, Line, Master, Rig};
 
 use crate::support::{bash, sourcing, Scripts};
 
@@ -65,7 +65,7 @@ impl Rig for Choosing {
         Ok(Conversation::default())
     }
 
-    fn hear(&self, session: &mut Conversation, said: Line) -> Result<(), Halt> {
+    fn hear(&self, session: &mut Conversation, said: Line) -> Result<(), Failure> {
         session.heard.push(said);
 
         Ok(())

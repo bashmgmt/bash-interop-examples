@@ -3,7 +3,7 @@
 //! The rig contributes no bash: `STEP` is a word this script chose, and
 //! `behind` is how a decoder claims it.
 
-use mb_resolver::bash::rig::{field, shells, ExitStatus, Failure, Halt, Line, Master, Rig};
+use mb_resolver::bash::rig::{field, shells, ExitStatus, Failure, Line, Master, Rig};
 
 use crate::support::{bash, Scripts};
 
@@ -17,7 +17,7 @@ impl Rig for Keeping {
         Ok(Vec::new())
     }
 
-    fn hear(&self, heard: &mut Vec<Line>, said: Line) -> Result<(), Halt> {
+    fn hear(&self, heard: &mut Vec<Line>, said: Line) -> Result<(), Failure> {
         heard.push(said);
 
         Ok(())

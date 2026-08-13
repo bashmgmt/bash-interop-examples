@@ -8,7 +8,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 
-use mb_resolver::bash::rig::{Doing, ExitStatus, Failure, Halt, Line, Master, Rig};
+use mb_resolver::bash::rig::{Doing, ExitStatus, Failure, Line, Master, Rig};
 
 use crate::support::{bash, Scripts};
 
@@ -32,7 +32,7 @@ impl Rig for Logging {
         Ok(Writing { written: 0, sink: BufWriter::new(sink) })
     }
 
-    fn hear(&self, session: &mut Writing, said: Line) -> Result<(), Halt> {
+    fn hear(&self, session: &mut Writing, said: Line) -> Result<(), Failure> {
         let at = || format!("writing {}", self.into.display());
 
         writeln!(session.sink, "{} {}", said.sent.pid, said.words.join(" ")).doing(at)?;
