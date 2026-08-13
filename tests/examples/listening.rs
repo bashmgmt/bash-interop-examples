@@ -3,7 +3,7 @@
 //! The rig contributes no bash: `STEP` is a word this script chose, and
 //! `behind` is how a decoder claims it.
 
-use mb_resolver::bash::rig::{field, run, shells, ExitStatus, Failure, Line, Rig};
+use mb_resolver::bash::rig::{field, shells, ExitStatus, Failure, Halt, Line, Master, Rig};
 
 use crate::support::{bash, Scripts};
 
@@ -17,12 +17,14 @@ impl Rig for Keeping {
         Ok(Vec::new())
     }
 
-    fn hear(&self, heard: &mut Vec<Line>, said: Line) -> Result<(), Failure> {
+    fn hear(&self, heard: &mut Vec<Line>, said: Line) -> Result<(), Halt> {
         heard.push(said);
 
         Ok(())
     }
 }
+
+impl Master for Keeping {}
 
 #[derive(Debug, PartialEq, Eq)]
 struct Step {
@@ -67,7 +69,7 @@ fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
     )]);
 
     let (heard, status) =
-        run(&Keeping, &bash(scripts.at("collect.bash"))).unwrap().whole().unwrap();
+        Keeping.run(&bash(scripts.at("collect.bash"))).unwrap().whole().unwrap();
 
     assert_eq!(status, ExitStatus::Code(0));
 

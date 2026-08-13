@@ -11,7 +11,7 @@
 
 use std::collections::HashSet;
 
-use mb_resolver::bash::rig::{run, Doing, ExitStatus, Failure, Line, Rig, Startup};
+use mb_resolver::bash::rig::{Doing, ExitStatus, Failure, Halt, Line, Master, Rig};
 use mb_resolver::bashcap::{instrument, Capture, Tracing};
 
 use crate::fixture;
@@ -28,8 +28,8 @@ impl Rig for Snapshots {
     /// `ERR`, `DEBUG` and `RETURN` traps inherited by functions and
     /// subshells, so a subject with traps of its own behaves differently
     /// under it. That is why it is asked for rather than assumed.
-    fn startup(&self) -> Startup {
-        Startup { bash: instrument(Tracing::Calls), ..Default::default() }
+    fn bash(&self) -> String {
+        instrument(Tracing::Calls)
     }
 
     fn open(&self) -> Result<Self::Session, Failure> {
@@ -38,7 +38,7 @@ impl Rig for Snapshots {
 
     /// Recognise, then decode: `None` is some other tool's message, and a
     /// snapshot that will not decode ends the run.
-    fn hear(&self, seen: &mut Self::Session, said: Line) -> Result<(), Failure> {
+    fn hear(&self, seen: &mut Self::Session, said: Line) -> Result<(), Halt> {
         let Some(decoded) = Capture::of(&said) else { return Ok(()) };
 
         seen.push(decoded.doing(|| format!("a snapshot from pid {}", said.sent.pid))?);
@@ -47,10 +47,12 @@ impl Rig for Snapshots {
     }
 }
 
+impl Master for Snapshots {}
+
 #[test]
 fn a_tools_instrument_is_reusable_without_its_command_line() {
     let (seen, status) =
-        run(&Snapshots, &bash(fixture("bashcap_demo/demo.bash"))).unwrap().whole().unwrap();
+        Snapshots.run(&bash(fixture("bashcap_demo/demo.bash"))).unwrap().whole().unwrap();
 
     assert_eq!(status, ExitStatus::Code(0));
     for (at, capture) in seen.iter().enumerate() {

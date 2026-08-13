@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use mb_resolver::bash::rig::{field, run, Answer, ExitStatus, Failure, Line, Rig, Startup};
+use mb_resolver::bash::rig::{field, Answer, ExitStatus, Failure, Halt, Line, Master, Rig};
 
 use crate::support::{bash, sourcing, Scripts};
 
@@ -57,15 +57,15 @@ fn candidate(line: &Line) -> Option<Candidate> {
 impl Rig for Choosing {
     type Session = Conversation;
 
-    fn startup(&self) -> Startup {
-        Startup { bash: OPERATOR_BASH.to_string(), ..Default::default() }
+    fn bash(&self) -> String {
+        OPERATOR_BASH.to_string()
     }
 
     fn open(&self) -> Result<Conversation, Failure> {
         Ok(Conversation::default())
     }
 
-    fn hear(&self, session: &mut Conversation, said: Line) -> Result<(), Failure> {
+    fn hear(&self, session: &mut Conversation, said: Line) -> Result<(), Halt> {
         session.heard.push(said);
 
         Ok(())
@@ -97,6 +97,8 @@ impl Rig for Choosing {
     }
 }
 
+impl Master for Choosing {}
+
 #[test]
 fn each_turn_is_computed_from_what_the_other_side_said() {
     let scripts = Scripts::of(&[(
@@ -111,7 +113,7 @@ fn each_turn_is_computed_from_what_the_other_side_said() {
     )]);
 
     let (session, status) =
-        run(&Choosing { steps: scripts.dir().to_path_buf() }, &bash(scripts.at("session.bash")))
+        Choosing { steps: scripts.dir().to_path_buf() }.run(&bash(scripts.at("session.bash")))
             .unwrap()
             .whole()
             .unwrap();

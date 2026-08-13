@@ -8,7 +8,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 
-use mb_resolver::bash::rig::{run, Doing, ExitStatus, Failure, Line, Rig};
+use mb_resolver::bash::rig::{Doing, ExitStatus, Failure, Halt, Line, Master, Rig};
 
 use crate::support::{bash, Scripts};
 
@@ -32,7 +32,7 @@ impl Rig for Logging {
         Ok(Writing { written: 0, sink: BufWriter::new(sink) })
     }
 
-    fn hear(&self, session: &mut Writing, said: Line) -> Result<(), Failure> {
+    fn hear(&self, session: &mut Writing, said: Line) -> Result<(), Halt> {
         let at = || format!("writing {}", self.into.display());
 
         writeln!(session.sink, "{} {}", said.sent.pid, said.words.join(" ")).doing(at)?;
@@ -41,10 +41,12 @@ impl Rig for Logging {
         Ok(())
     }
 
-    fn end(&self, session: &mut Writing, _status: ExitStatus) -> Result<(), Failure> {
+    fn end(&self, session: &mut Writing) -> Result<(), Failure> {
         session.sink.flush().doing(|| format!("flushing {}", self.into.display()))
     }
 }
+
+impl Master for Logging {}
 
 #[test]
 fn a_session_may_hold_a_resource_and_keep_no_messages() {
@@ -58,7 +60,7 @@ fn a_session_may_hold_a_resource_and_keep_no_messages() {
     )]);
     let into = scripts.at("said.log");
 
-    let (session, status) = run(&Logging { into: into.clone() }, &bash(scripts.at("main.bash")))
+    let (session, status) = Logging { into: into.clone() }.run(&bash(scripts.at("main.bash")))
         .unwrap()
         .whole()
         .unwrap();
