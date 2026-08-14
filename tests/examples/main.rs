@@ -12,9 +12,13 @@
 //! `hear`/`answer`/`end` it cares about, and `bash` if it needs a word of its
 //! own in the subject's shells.
 //!
-//! All of them drive the run from Rust. `tests/joining.rs` is the other way
-//! round: a fixture script that starts a session of its own and asks it
-//! questions.
+//! All of them drive the run from Rust. `tests/joined/` is the other way
+//! round — a fixture script that starts a session of its own:
+//!
+//! | | |
+//! |---|---|
+//! | `merging` | two shells merged into one view, written into an array the client named |
+//! | `measuring` | a build script that measures itself, with or without a server |
 //!
 //! `cargo test --test examples -- --nocapture <name>`
 
