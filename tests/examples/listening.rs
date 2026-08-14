@@ -89,5 +89,6 @@ fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
         "a message nobody wrote a decoder for is still there, as raw words"
     );
 
-    assert_eq!(shells(&heard).len(), 1, "provenance rides along: one shell produced all of it");
+    let shells = shells(&heard).expect("every shell said what it was");
+    assert_eq!(shells.len(), 1, "provenance rides along: one shell produced all of it");
 }

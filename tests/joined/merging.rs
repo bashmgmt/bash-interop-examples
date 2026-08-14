@@ -18,7 +18,7 @@
 use std::iter::once;
 use std::process::Command;
 
-use mb_resolver::bash::rig::{shells, Answer, Failure, Line, Rig, Slave};
+use mb_resolver::bash::rig::{shells, Answer, Failure, Kind, Line, Rig, Slave};
 use mb_resolver::bash::value::emit_array;
 
 /// The word the rig's own answers call. A nameref is how bash lets a callee
@@ -75,12 +75,20 @@ impl Slave for Merging {}
 /// joined — and merging them back by `heard_at` is what makes the numbering
 /// mean something. One pipe carries every shell, so the order was already
 /// there; the clock is what says so.
+///
+/// A shell opens with an account of itself, which is what puts it in that
+/// arrangement and gives it its number. It is not something the shell *said*,
+/// so it is not in the merge.
 fn merged(heard: &[Line]) -> Vec<String> {
-    let shells = shells(heard);
+    let shells = shells(heard).expect("every shell said what it was");
     let mut lines: Vec<(&Line, usize)> = shells
         .iter()
         .enumerate()
-        .flat_map(|(at, shell)| shell.lines.iter().map(move |line| (*line, at + 1)))
+        .flat_map(|(at, shell)| {
+            let said = shell.lines.iter().filter(|line| line.kind == Kind::Say);
+
+            said.map(move |line| (*line, at + 1))
+        })
         .collect();
 
     lines.sort_by_key(|(line, _)| line.sent.heard_at);

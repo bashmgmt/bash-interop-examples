@@ -11,17 +11,25 @@
 
 use std::collections::HashSet;
 
-use mb_resolver::bash::rig::{Doing, ExitStatus, Failure, Line, Master, Rig};
+use mb_resolver::bash::rig::{Doing, ExitStatus, Failure, Line, Master, Rig, Shells};
 use mb_resolver::bashcap::{instrument, Capture, Tracing};
 
 use crate::fixture;
 use crate::support::bash;
 
-/// The session: every snapshot, under the provenance the wire gave it.
+/// The session: every snapshot, under the provenance the wire gave it — and
+/// the shells that joined, because a walk is read against the shell it was
+/// taken in and `BASH_SOURCE` alone cannot say what its own words mean.
 struct Snapshots;
 
+#[derive(Default)]
+struct Seen {
+    shells: Shells,
+    captures: Vec<Capture>,
+}
+
 impl Rig for Snapshots {
-    type Session = Vec<Capture>;
+    type Session = Seen;
 
     /// bashcap's instrument, in every shell the subject starts, asking for
     /// the full stack. `Tracing::Calls` is not free: `extdebug` also makes
@@ -33,15 +41,21 @@ impl Rig for Snapshots {
     }
 
     fn open(&self) -> Result<Self::Session, Failure> {
-        Ok(Vec::new())
+        Ok(Seen::default())
     }
 
-    /// Recognise, then decode: `None` is some other tool's message, and a
-    /// snapshot that will not decode ends the run.
+    /// Register, then recognise, then decode. Every message goes through the
+    /// register, whether or not it is one of ours: that is what opens a shell
+    /// and what places the rest under it. `None` is some other tool's message,
+    /// and a snapshot that will not decode ends the run.
     fn hear(&self, seen: &mut Self::Session, said: Line) -> Result<(), Failure> {
-        let Some(decoded) = Capture::of(&said) else { return Ok(()) };
+        let shell = seen.shells.hear(&said)?;
 
-        seen.push(decoded.doing(|| format!("a snapshot from pid {}", said.sent.pid))?);
+        let Some(decoded) = Capture::of(&said, &seen.shells.at(shell).bash) else {
+            return Ok(());
+        };
+
+        seen.captures.push(decoded.doing(|| format!("a snapshot from pid {}", said.sent.pid))?);
 
         Ok(())
     }
@@ -51,8 +65,9 @@ impl Master for Snapshots {}
 
 #[test]
 fn a_tools_instrument_is_reusable_without_its_command_line() {
-    let (seen, status) =
+    let (session, status) =
         Snapshots.run(&bash(fixture("bashcap_demo/demo.bash"))).unwrap().whole().unwrap();
+    let seen = session.captures;
 
     assert_eq!(status, ExitStatus::Code(0));
     for (at, capture) in seen.iter().enumerate() {
@@ -66,7 +81,7 @@ fn a_tools_instrument_is_reusable_without_its_command_line() {
     let frames: Vec<_> = seen.iter().flat_map(|capture| capture.snapshot.stack.frames()).collect();
     for capture in &seen {
         assert!(!capture.snapshot.stack.frames().collect::<Vec<_>>().is_empty(), "pid {} says where it is", capture.sent.pid);
-        assert!(capture.snapshot.state.contains_key("shlvl"), "and which shell it is");
+        assert!(capture.snapshot.state.contains_key("seconds"), "and how long it had been up");
     }
 
     let shells: HashSet<u32> = seen.iter().map(|capture| capture.sent.pid.0).collect();
