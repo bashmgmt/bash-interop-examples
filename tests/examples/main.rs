@@ -12,13 +12,11 @@
 //! gets and how a reaction is built once a shell is there, and a reaction with
 //! whichever of `hear`/`answer`/`finish` it cares about.
 //!
-//! All of them drive the run from Rust. `tests/joined/` is the other way
-//! round — a fixture script that starts a session of its own:
-//!
-//! | | |
-//! |---|---|
-//! | `merging` | two shells merged into one view, written into an array the client named |
-//! | `measuring` | a build script that measures itself, with or without a server |
+//! All of them drive the run from Rust. `tests/joined/merging` is the other
+//! way round — a fixture script that starts a session of its own, two shells
+//! merged into one view, written into an array the client named. A script that
+//! wants what a shipped tool already does starts that instead: `bashprof
+//! serve`, covered in `tests/cli.rs`.
 //!
 //! `cargo test --test examples -- --nocapture <name>`
 

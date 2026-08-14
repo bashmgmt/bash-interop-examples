@@ -1,11 +1,11 @@
 //! Reusing another tool's instrument: bashcap's bash and its decoder, with no
 //! command line and no JSON in between.
 //!
-//! `bashcap run --into out.jsonl --trace-calls bash script.bash` is this rig
-//! writing to a file. Here each shell's reaction keeps typed captures, so what
-//! is reused is exactly the pair that matters — the bash that harvests a shell,
-//! and the code that reads one back. The rendering comes with them: `Capture`
-//! is `Display`, and `bashcap show` prints the same text.
+//! `bashcap run_bash_env --into out.jsonl --trace-calls bash script.bash` is
+//! this rig writing to a file. Here each shell's reaction keeps typed captures,
+//! so what is reused is exactly the pair that matters — the bash that harvests
+//! a shell, and the code that reads one back. The rendering comes with them:
+//! `Capture` is `Display`, and `bashcap show` prints the same text.
 //!
 //! `cargo test --test examples -- --nocapture snapshotting`
 
