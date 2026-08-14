@@ -48,10 +48,14 @@ fn serve(into: &Path) {
     write(into, &served.session).expect("a reading of the run");
 }
 
+/// Two readings, and each can refuse for its own reason: a message the
+/// instrument mangled, and a call the shell died inside. Both carry what they
+/// did read; this wants the whole of it, so both are failures here.
 fn write(into: &Path, heard: &[Line]) -> Result<(), Failure> {
-    let forest = recorded(heard)?;
+    let forest =
+        recorded(heard).map_err(|unread| Failure::new("reading the run", unread.to_string()))?;
     let profile = Profile::of(&forest)
-        .map_err(|unfinished| Failure::new("reading the run", unfinished.to_string()))?;
+        .map_err(|unfinished| Failure::new("timing the run", unfinished.to_string()))?;
 
     fs::write(into, profile.to_string()).doing(|| format!("writing {}", into.display()))
 }
