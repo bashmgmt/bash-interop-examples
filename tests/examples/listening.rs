@@ -1,26 +1,22 @@
 //! A session that keeps what a script says, and a decoder that reads it back.
 //!
 //! The rig contributes no bash: `STEP` is a word this script chose, and
-//! `behind` is how a decoder claims it.
+//! `behind` is how a decoder claims it. Nor does it contribute a reaction —
+//! `Vec<Line>` is one already, and keeping every message is all this wants.
 
-use mb_resolver::bash::rig::{field, shells, ExitStatus, Failure, Line, Master, Rig};
+use std::sync::Arc;
+
+use mb_resolver::bash::rig::{field, heard, ExitStatus, Failure, Laid, Line, Master, Rig, Shell};
 
 use crate::support::{bash, Scripts};
 
-/// The session: everything the subject said, in the order it arrived.
 struct Keeping;
 
 impl Rig for Keeping {
-    type Session = Vec<Line>;
+    type Attending = Vec<Line>;
 
-    fn open(&self) -> Result<Vec<Line>, Failure> {
+    fn joined(&self, _at: &Laid, _shell: Arc<Shell>) -> Result<Vec<Line>, Failure> {
         Ok(Vec::new())
-    }
-
-    fn hear(&self, heard: &mut Vec<Line>, said: Line) -> Result<(), Failure> {
-        heard.push(said);
-
-        Ok(())
     }
 }
 
@@ -68,12 +64,16 @@ fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
             "#,
     )]);
 
-    let (heard, status) =
-        Keeping.run(&bash(scripts.at("collect.bash"))).unwrap().whole().unwrap();
+    let ran = Keeping.run(&bash(scripts.at("collect.bash"))).unwrap().whole().unwrap();
 
-    assert_eq!(status, ExitStatus::Code(0));
+    assert_eq!(ran.subject, ExitStatus::Code(0));
+    assert_eq!(ran.shells.len(), 1, "provenance is the shape: one shell produced all of it");
 
-    let steps: Vec<Step> = heard.iter().filter_map(step).map(Result::unwrap).collect();
+    // A run folds per shell, and `heard` puts those foldings back in the order
+    // the run read them. Each message comes with the shell that sent it.
+    let said = heard(&ran.shells);
+
+    let steps: Vec<Step> = said.iter().filter_map(|said| step(said.line)).map(Result::unwrap).collect();
     assert_eq!(
         steps,
         [
@@ -82,13 +82,10 @@ fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
         ]
     );
 
-    let total: Vec<&[String]> = heard.iter().filter_map(|line| line.behind("TOTAL")).collect();
+    let total: Vec<&[String]> = said.iter().filter_map(|said| said.line.behind("TOTAL")).collect();
     assert_eq!(
         total,
         [["alpha", "beta with spaces"]],
         "a message nobody wrote a decoder for is still there, as raw words"
     );
-
-    let shells = shells(&heard).expect("every shell said what it was");
-    assert_eq!(shells.len(), 1, "provenance rides along: one shell produced all of it");
 }

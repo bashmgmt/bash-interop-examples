@@ -6,7 +6,7 @@
 //!
 //! `cargo test --test examples -- --nocapture profiling`
 
-use mb_resolver::bash::rig::{ExitStatus, Master};
+use mb_resolver::bash::rig::{heard, ExitStatus, Master};
 use mb_resolver::bashprof::{recorded, BashProf, Profile};
 
 use crate::support::{bash, Scripts};
@@ -30,13 +30,15 @@ const BUILD: &str = r#"
 fn a_run_is_read_as_a_tree_and_then_as_measurements() {
     let scripts = Scripts::of(&[("build.bash", BUILD)]);
 
-    // Step one: run it. The session is every message the shells sent.
-    let (heard, status) = BashProf.run(&bash(scripts.at("build.bash"))).unwrap().whole().unwrap();
-    assert_eq!(status, ExitStatus::Code(0), "the subject's own status, as always");
+    // Step one: run it. Every shell that joined kept what it said.
+    let ran = BashProf.run(&bash(scripts.at("build.bash"))).unwrap().whole().unwrap();
+    assert_eq!(ran.subject, ExitStatus::Code(0), "the subject's own status, as always");
 
-    // Step two: read those messages as the tree the calls made. Every call
-    // that began is here, whether or not it ended.
-    let forest = recorded(&heard).expect("the instrument's own messages");
+    // Step two: read those messages as the tree the calls made. `heard` puts
+    // the per-shell foldings back in arrival order, each message with the shell
+    // that sent it — a walk means nothing without it. Every call that began is
+    // in the tree, whether or not it ended.
+    let forest = recorded(&heard(&ran.shells)).expect("the instrument's own messages");
     println!("as recorded:\n{}\n", mb_resolver::bashprof::Recorded::render(&forest));
 
     // Step three: read that tree as measurements. This is the step that can
@@ -79,10 +81,10 @@ fn a_run_that_died_mid_call_still_measured_what_completed() {
         "#,
     )]);
 
-    let (heard, status) = BashProf.run(&bash(scripts.at("build.bash"))).unwrap().whole().unwrap();
-    assert_eq!(status, ExitStatus::Code(1), "the subject failed, so the run reports that");
+    let ran = BashProf.run(&bash(scripts.at("build.bash"))).unwrap().whole().unwrap();
+    assert_eq!(ran.subject, ExitStatus::Code(1), "the subject failed, so the run reports that");
 
-    let forest = recorded(&heard).unwrap();
+    let forest = recorded(&heard(&ran.shells)).unwrap();
     let unfinished = Profile::of(&forest).expect_err("the shell died inside `doomed`");
 
     // The error carries the result: a caller that can proceed does.

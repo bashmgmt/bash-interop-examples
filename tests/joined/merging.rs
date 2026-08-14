@@ -5,9 +5,14 @@
 //! this binary's command line, because the variable is the client's and so is
 //! its name.
 //!
-//! Nothing is stamped here. The wire already puts both clocks on every message
-//! — the sending shell's `$EPOCHREALTIME` and the run's own — so "merged with
-//! timestamps" is reading two fields, not keeping a log.
+//! The merge is the whole session's, and a reaction is one shell's, so the list
+//! is a resource the rig holds and hands a share of to each shell it builds a
+//! reaction for. One pipe carries every shell, so pushing as messages arrive
+//! *is* the merge — there is nothing to sort afterwards.
+//!
+//! Nothing is stamped here either. The wire already puts both clocks on every
+//! message — the sending shell's `$EPOCHREALTIME` and the run's own — so
+//! "merged with timestamps" is reading two fields, not keeping a log.
 //!
 //! This file is a program rather than a set of `#[test]`s, because a client
 //! that drives its own session has to have something to start. With `serve` it
@@ -15,10 +20,13 @@
 //!
 //! `cargo test -p mb_resolver --test merging`
 
+use std::cell::RefCell;
 use std::iter::once;
 use std::process::Command;
+use std::rc::Rc;
+use std::sync::Arc;
 
-use mb_resolver::bash::rig::{shells, Answer, Failure, Kind, Line, Rig, Slave};
+use mb_resolver::bash::rig::{Answer, Failure, Laid, Line, Reacting, Rig, Shell, Slave};
 use mb_resolver::bash::value::emit_array;
 
 /// The word the rig's own answers call. A nameref is how bash lets a callee
@@ -32,80 +40,83 @@ __merge_into() {
 }
 "#;
 
+/// Everything the shells have said, in the order the session heard it. The
+/// client's array is a projection of this and never a second copy of it — which
+/// is why nothing here counts what has already been handed over.
+type Merged = Rc<RefCell<Vec<(Arc<Shell>, Line)>>>;
+
 /// The rig: it merges what it heard, and writes the merge where it was told.
 struct Merging {
     /// The client's array, by name. From this binary's command line.
     into: String,
+    heard: Merged,
+}
+
+/// One shell's part in that. The shell is a member, so every entry says who
+/// said it without anything being read back off the message.
+struct Merges {
+    shell: Arc<Shell>,
+    into: String,
+    heard: Merged,
 }
 
 impl Rig for Merging {
-    /// Every message, in arrival order. The client's array is a projection of
-    /// this and never a second copy of it — which is why nothing here counts
-    /// what has already been handed over.
-    type Session = Vec<Line>;
+    type Attending = Merges;
 
     fn bash(&self) -> String {
         MERGE_INTO.to_string()
     }
 
-    fn open(&self) -> Result<Vec<Line>, Failure> {
-        Ok(Vec::new())
+    fn joined(&self, _at: &Laid, shell: Arc<Shell>) -> Result<Merges, Failure> {
+        Ok(Merges { shell, into: self.into.clone(), heard: Rc::clone(&self.heard) })
     }
+}
 
-    fn hear(&self, heard: &mut Vec<Line>, said: Line) -> Result<(), Failure> {
-        heard.push(said);
+impl Reacting for Merges {
+    /// The merge is the shared list; a shell keeps nothing of its own.
+    type Kept = ();
+
+    fn hear(&mut self, said: Line) -> Result<(), Failure> {
+        self.heard.borrow_mut().push((Arc::clone(&self.shell), said));
 
         Ok(())
     }
 
     /// `MERGE` alone, and nothing else. The question is not kept: it is a turn
     /// in the protocol, not something a shell said.
-    fn answer(&self, heard: &mut Vec<Line>, asked: Line) -> Result<Answer, Failure> {
+    fn answer(&mut self, asked: Line) -> Result<Answer, Failure> {
         let Some([]) = asked.behind("MERGE") else { return Ok(Answer::status(127)) };
+        let entries = merged(&self.heard.borrow());
 
-        Ok(Answer::of("__merge_into", once(self.into.clone()).chain(merged(heard))))
+        Ok(Answer::of("__merge_into", once(self.into.clone()).chain(entries)))
+    }
+
+    fn finish(self) -> Result<(), Failure> {
+        Ok(())
     }
 }
 
 impl Slave for Merging {}
 
-/// What the shells said, as one list ordered by the clock the run kept.
+/// The list as the client gets it, offsets counted from the first message.
 ///
-/// [`shells`] is the arrangement — one entry per shell, in the order they
-/// joined — and merging them back by `heard_at` is what makes the numbering
-/// mean something. One pipe carries every shell, so the order was already
-/// there; the clock is what says so.
-///
-/// A shell opens with an account of itself, which is what puts it in that
-/// arrangement and gives it its number. It is not something the shell *said*,
-/// so it is not in the merge.
-fn merged(heard: &[Line]) -> Vec<String> {
-    let shells = shells(heard).expect("every shell said what it was");
-    let mut lines: Vec<(&Line, usize)> = shells
-        .iter()
-        .enumerate()
-        .flat_map(|(at, shell)| {
-            let said = shell.lines.iter().filter(|line| line.kind == Kind::Say);
+/// A shell opens with an account of itself, which is what makes the shell and
+/// gives it its number. It is not something the shell *said*, so it cannot be a
+/// message here and there is nothing to filter out.
+fn merged(heard: &[(Arc<Shell>, Line)]) -> Vec<String> {
+    let Some((_, first)) = heard.first() else { return Vec::new() };
 
-            said.map(move |line| (*line, at + 1))
-        })
-        .collect();
-
-    lines.sort_by_key(|(line, _)| line.sent.heard_at);
-
-    let Some(&(first, _)) = lines.first() else { return Vec::new() };
-
-    lines.iter().map(|&(line, shell)| entry(shell, line, first)).collect()
+    heard.iter().map(|(shell, line)| entry(shell, line, first)).collect()
 }
 
 /// One line of the merge: which shell, how far into the session, how long the
 /// message took to arrive, and the words themselves as a bash array literal —
 /// so the client unpacks one level and gets its word boundaries back.
-fn entry(shell: usize, line: &Line, first: &Line) -> String {
+fn entry(shell: &Shell, line: &Line, first: &Line) -> String {
     let since = line.sent.heard_at.0 - first.sent.heard_at.0;
     let travelled = line.sent.heard_at.0.abs_diff(line.sent.sent_at.0);
 
-    format!("{shell} {since} {travelled} {}", emit_array(&line.words))
+    format!("{} {since} {travelled} {}", shell.nth + 1, emit_array(&line.words))
 }
 
 fn main() {
@@ -128,7 +139,8 @@ fn into(argv: &mut impl Iterator<Item = String>) -> String {
 /// The server the fixture starts. It holds our standard input and reads the
 /// address from our standard output; `BC_JOIN` is the word that does both.
 fn serve(into: String) {
-    let served = Merging { into }.serve_coprocess().expect("the session");
+    let merging = Merging { into, heard: Rc::new(RefCell::new(Vec::new())) };
+    let served = merging.serve_coprocess().expect("the session");
 
     assert!(served.failed.is_none(), "the session closed up cleanly");
 }

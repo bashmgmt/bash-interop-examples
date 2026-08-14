@@ -2,34 +2,35 @@
 //! command line and no JSON in between.
 //!
 //! `bashcap run --into out.jsonl --trace-calls bash script.bash` is this rig
-//! with a file for a session. Here the session is typed captures, so what is
-//! reused is exactly the pair that matters — the bash that harvests a shell,
+//! writing to a file. Here each shell's reaction keeps typed captures, so what
+//! is reused is exactly the pair that matters — the bash that harvests a shell,
 //! and the code that reads one back. The rendering comes with them: `Capture`
 //! is `Display`, and `bashcap show` prints the same text.
 //!
 //! `cargo test --test examples -- --nocapture snapshotting`
 
-use std::collections::HashSet;
+use std::sync::Arc;
 
-use mb_resolver::bash::rig::{Doing, ExitStatus, Failure, Line, Master, Rig, Shells};
+use mb_resolver::bash::rig::{
+    Doing, ExitStatus, Failure, Laid, Line, Master, Reacting, Rig, Shell,
+};
 use mb_resolver::bashcap::{instrument, Capture, Tracing};
 
 use crate::fixture;
 use crate::support::bash;
 
-/// The session: every snapshot, under the provenance the wire gave it — and
-/// the shells that joined, because a walk is read against the shell it was
-/// taken in and `BASH_SOURCE` alone cannot say what its own words mean.
 struct Snapshots;
 
-#[derive(Default)]
+/// One shell's snapshots. The shell is a member rather than something looked up
+/// per message: a walk is read against the shell it was taken in, and
+/// `BASH_SOURCE` alone cannot say what its own words mean.
 struct Seen {
-    shells: Shells,
+    shell: Arc<Shell>,
     captures: Vec<Capture>,
 }
 
 impl Rig for Snapshots {
-    type Session = Seen;
+    type Attending = Seen;
 
     /// bashcap's instrument, in every shell the subject starts, asking for
     /// the full stack. `Tracing::Calls` is not free: `extdebug` also makes
@@ -40,24 +41,28 @@ impl Rig for Snapshots {
         instrument(Tracing::Calls)
     }
 
-    fn open(&self) -> Result<Self::Session, Failure> {
-        Ok(Seen::default())
+    fn joined(&self, _at: &Laid, shell: Arc<Shell>) -> Result<Seen, Failure> {
+        Ok(Seen { shell, captures: Vec::new() })
     }
+}
 
-    /// Register, then recognise, then decode. Every message goes through the
-    /// register, whether or not it is one of ours: that is what opens a shell
-    /// and what places the rest under it. `None` is some other tool's message,
-    /// and a snapshot that will not decode ends the run.
-    fn hear(&self, seen: &mut Self::Session, said: Line) -> Result<(), Failure> {
-        let shell = seen.shells.hear(&said)?;
+impl Reacting for Seen {
+    type Kept = Vec<Capture>;
 
-        let Some(decoded) = Capture::of(&said, &seen.shells.at(shell).bash) else {
+    /// Recognise, then decode. `None` is some other tool's message, and a
+    /// snapshot that will not decode ends the run.
+    fn hear(&mut self, said: Line) -> Result<(), Failure> {
+        let Some(decoded) = Capture::of(&said, &self.shell) else {
             return Ok(());
         };
 
-        seen.captures.push(decoded.doing(|| format!("a snapshot from pid {}", said.sent.pid))?);
+        self.captures.push(decoded.doing(|| format!("a snapshot from pid {}", self.shell.pid))?);
 
         Ok(())
+    }
+
+    fn finish(self) -> Result<Vec<Capture>, Failure> {
+        Ok(self.captures)
     }
 }
 
@@ -65,11 +70,10 @@ impl Master for Snapshots {}
 
 #[test]
 fn a_tools_instrument_is_reusable_without_its_command_line() {
-    let (session, status) =
-        Snapshots.run(&bash(fixture("bashcap_demo/demo.bash"))).unwrap().whole().unwrap();
-    let seen = session.captures;
+    let ran = Snapshots.run(&bash(fixture("bashcap_demo/demo.bash"))).unwrap().whole().unwrap();
+    assert_eq!(ran.subject, ExitStatus::Code(0));
 
-    assert_eq!(status, ExitStatus::Code(0));
+    let seen: Vec<&Capture> = ran.shells.iter().flat_map(|at| &at.kept).collect();
     for (at, capture) in seen.iter().enumerate() {
         println!("[{at}] {capture}");
     }
@@ -77,18 +81,20 @@ fn a_tools_instrument_is_reusable_without_its_command_line() {
     // The fixture is meant to be edited: what follows holds for any script
     // that calls `BASHCAP`, and reads none of its lines, names or counts.
     assert!(!seen.is_empty(), "an instrumented script took at least one snapshot");
+    assert!(ran.shells.len() > 1, "the fixture's subshell and child are shells of their own");
 
-    let frames: Vec<_> = seen.iter().flat_map(|capture| capture.snapshot.stack.frames()).collect();
     for capture in &seen {
-        assert!(!capture.snapshot.stack.frames().collect::<Vec<_>>().is_empty(), "pid {} says where it is", capture.sent.pid);
+        assert!(
+            capture.snapshot.stack.frames().next().is_some(),
+            "pid {} says where it is",
+            capture.shell.pid
+        );
         assert!(capture.snapshot.state.contains_key("seconds"), "and how long it had been up");
     }
 
-    let shells: HashSet<u32> = seen.iter().map(|capture| capture.sent.pid.0).collect();
-    assert!(shells.len() > 1, "the fixture's subshell and child are shells of their own");
-
     // `BASH_ENV` reaches every shell; a command line would have reached only
     // the first.
+    let frames: Vec<_> = seen.iter().flat_map(|capture| capture.snapshot.stack.frames()).collect();
     assert!(
         frames.iter().all(|frame| frame.args.is_some()),
         "asking for the full stack gets it in every shell, not just where the run started"

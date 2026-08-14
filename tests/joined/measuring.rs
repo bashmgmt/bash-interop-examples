@@ -16,7 +16,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use mb_resolver::bash::rig::{Doing, Failure, Line, Slave};
+use mb_resolver::bash::rig::{heard, Attended, Doing, Failure, Line, Slave};
 use mb_resolver::bashprof::{recorded, BashProf, Profile};
 
 fn main() {
@@ -45,15 +45,15 @@ fn serve(into: &Path) {
     let served = BashProf.serve_coprocess().expect("the session");
     assert!(served.failed.is_none(), "the session closed up cleanly");
 
-    write(into, &served.session).expect("a reading of the run");
+    write(into, &served.shells).expect("a reading of the run");
 }
 
 /// Two readings, and each can refuse for its own reason: a message the
 /// instrument mangled, and a call the shell died inside. Both carry what they
 /// did read; this wants the whole of it, so both are failures here.
-fn write(into: &Path, heard: &[Line]) -> Result<(), Failure> {
-    let forest =
-        recorded(heard).map_err(|unread| Failure::new("reading the run", unread.to_string()))?;
+fn write(into: &Path, shells: &[Attended<Vec<Line>>]) -> Result<(), Failure> {
+    let forest = recorded(&heard(shells))
+        .map_err(|unread| Failure::new("reading the run", unread.to_string()))?;
     let profile = Profile::of(&forest)
         .map_err(|unfinished| Failure::new("timing the run", unfinished.to_string()))?;
 

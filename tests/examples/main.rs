@@ -2,15 +2,15 @@
 //!
 //! | | |
 //! |---|---|
-//! | [`listening`] | a session that keeps what a script says, and decodes it |
-//! | [`answering`] | a session that answers questions from what it has heard |
-//! | [`streaming`] | a session that keeps nothing and holds a resource |
+//! | [`listening`] | keeping what a script says, and decoding it |
+//! | [`answering`] | answering questions from what one shell has said |
+//! | [`streaming`] | keeping nothing, and holding a resource every shell shares |
 //! | [`snapshotting`] | reusing another tool's instrument and decoder |
 //! | [`profiling`] | timing a tree of calls, and the two shapes a run can have |
 //!
-//! Every one of them is the same pieces: a session type, `open`, whichever of
-//! `hear`/`answer`/`end` it cares about, and `bash` if it needs a word of its
-//! own in the subject's shells.
+//! Every one of them is the same pieces: a rig saying what bash the subject
+//! gets and how a reaction is built once a shell is there, and a reaction with
+//! whichever of `hear`/`answer`/`finish` it cares about.
 //!
 //! All of them drive the run from Rust. `tests/joined/` is the other way
 //! round — a fixture script that starts a session of its own:

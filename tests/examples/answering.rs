@@ -3,10 +3,17 @@
 //! An answer is a command the shell runs, so its expressiveness is bash's:
 //! `return`, `declare -g`, `source`, `exit`, or any word the rig's own bash
 //! defined. A refusal is a command that says so and returns non-zero.
+//!
+//! One reaction per shell, so the conversation each answer is computed from is
+//! that shell's own — and where an answer's bash goes is the session's own
+//! workspace, which every reaction is handed at construction.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use mb_resolver::bash::rig::{field, Answer, ExitStatus, Failure, Line, Master, Rig};
+use mb_resolver::bash::rig::{
+    field, Answer, ExitStatus, Failure, Laid, Line, Master, Reacting, Rig, Shell,
+};
 
 use crate::support::{bash, sourcing, Scripts};
 
@@ -20,14 +27,12 @@ REFUSE() {
 }
 "#;
 
-/// An answer names a path; this decides which. The core has no opinion.
-struct Choosing {
-    steps: PathBuf,
-}
+struct Choosing;
 
-/// The session: what has been heard, which is what each decision is made from.
-#[derive(Default)]
+/// What one shell has said, which is what each of its answers is made from.
 struct Conversation {
+    shell: Arc<Shell>,
+    dir: PathBuf,
     heard: Vec<Line>,
 }
 
@@ -39,6 +44,11 @@ impl Conversation {
             .filter_map(candidate)
             .max_by_key(|found| found.weight)
             .map(|found| found.name)
+    }
+
+    /// A file of this session's own to write an answer's bash into.
+    fn step(&self, seq: u32) -> PathBuf {
+        self.dir.join(format!("step.{}.{seq}.bash", self.shell.pid))
     }
 }
 
@@ -55,26 +65,30 @@ fn candidate(line: &Line) -> Option<Candidate> {
 }
 
 impl Rig for Choosing {
-    type Session = Conversation;
+    type Attending = Conversation;
 
     fn bash(&self) -> String {
         OPERATOR_BASH.to_string()
     }
 
-    fn open(&self) -> Result<Conversation, Failure> {
-        Ok(Conversation::default())
+    fn joined(&self, at: &Laid, shell: Arc<Shell>) -> Result<Conversation, Failure> {
+        Ok(Conversation { shell, dir: at.dir.clone(), heard: Vec::new() })
     }
+}
 
-    fn hear(&self, session: &mut Conversation, said: Line) -> Result<(), Failure> {
-        session.heard.push(said);
+impl Reacting for Conversation {
+    type Kept = Vec<Line>;
+
+    fn hear(&mut self, said: Line) -> Result<(), Failure> {
+        self.heard.push(said);
 
         Ok(())
     }
 
-    fn answer(&self, session: &mut Conversation, asked: Line) -> Result<Answer, Failure> {
+    fn answer(&mut self, asked: Line) -> Result<Answer, Failure> {
         let phase = asked.words.last().cloned().unwrap_or_default();
-        let step = self.steps.join(format!("step.{}.{}.bash", asked.sent.pid, asked.sent.seq));
-        session.heard.push(asked);
+        let step = self.step(asked.sent.seq);
+        self.heard.push(asked);
 
         match phase.as_str() {
             // A sourced command runs in the asking shell, so what it defines
@@ -87,13 +101,17 @@ impl Rig for Choosing {
                 "#,
             ),
 
-            "choose" => match session.preferred() {
+            "choose" => match self.preferred() {
                 Some(name) => sourcing(&step, &format!("picked={name}")),
                 None => Ok(Answer::of("REFUSE", ["nothing to choose from", "3"])),
             },
 
             other => Ok(Answer::of("REFUSE", [format!("unknown question {other:?}"), "2".into()])),
         }
+    }
+
+    fn finish(self) -> Result<Vec<Line>, Failure> {
+        Ok(self.heard)
     }
 }
 
@@ -112,19 +130,19 @@ fn each_turn_is_computed_from_what_the_other_side_said() {
         "#,
     )]);
 
-    let (session, status) =
-        Choosing { steps: scripts.dir().to_path_buf() }.run(&bash(scripts.at("session.bash")))
-            .unwrap()
-            .whole()
-            .unwrap();
+    let ran = Choosing.run(&bash(scripts.at("session.bash"))).unwrap().whole().unwrap();
 
     let marks: Vec<&[String]> =
-        session.heard.iter().filter_map(|line| line.behind("MARK")).collect();
+        ran.shells[0].kept.iter().filter_map(|line| line.behind("MARK")).collect();
     assert_eq!(
         marks,
         [["settled on elderberry"]],
         "a sourced answer set `picked` in the script's own scope, a turn earlier"
     );
 
-    assert_eq!(status, ExitStatus::Code(2), "a refusal is a command, so its status walks out");
+    assert_eq!(
+        ran.subject,
+        ExitStatus::Code(2),
+        "a refusal is a command, so its status walks out"
+    );
 }

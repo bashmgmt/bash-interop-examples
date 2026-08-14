@@ -1,48 +1,76 @@
 //! A session that keeps nothing and holds a resource instead.
 //!
-//! `hear` writes each message as it arrives, so resident memory does not
-//! track the run; `end` flushes, so a failed flush ends the run rather than
-//! being lost in a `Drop`. This is the shape `bashcap` takes.
+//! One reaction per shell, and one file for all of them. What is shared is the
+//! caller's own — the rig opens it and hands each reaction a share — which is
+//! why the core names no sharing discipline. `hear` writes as each message
+//! arrives, so resident memory does not track the run; `finish` flushes, so a
+//! failed flush ends the run rather than being lost in a `Drop`.
+//!
+//! This is the shape `bashcap` takes.
 
+use std::cell::RefCell;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
 
-use mb_resolver::bash::rig::{Doing, ExitStatus, Failure, Line, Master, Rig};
+use mb_resolver::bash::rig::{
+    Doing, ExitStatus, Failure, Laid, Line, Master, Reacting, Rig, Shell,
+};
 
 use crate::support::{bash, Scripts};
 
+type Sink = Rc<RefCell<BufWriter<File>>>;
+
 struct Logging {
     into: PathBuf,
+    sink: Sink,
 }
 
-/// The session: a sink and a tally. Neither is the rig's — a rig is `&self`
-/// and never changes.
+impl Logging {
+    fn writing(into: PathBuf) -> Result<Self, Failure> {
+        let file = File::create(&into).doing(|| format!("writing {}", into.display()))?;
+
+        Ok(Self { into, sink: Rc::new(RefCell::new(BufWriter::new(file))) })
+    }
+}
+
+/// One shell's share of the log. The shell is a member, so the pid on every
+/// line is what that shell said it was rather than something read off each
+/// message.
 struct Writing {
+    shell: Arc<Shell>,
+    into: PathBuf,
+    sink: Sink,
     written: usize,
-    sink: BufWriter<File>,
 }
 
 impl Rig for Logging {
-    type Session = Writing;
+    type Attending = Writing;
 
-    fn open(&self) -> Result<Writing, Failure> {
-        let sink = File::create(&self.into).doing(|| format!("writing {}", self.into.display()))?;
-
-        Ok(Writing { written: 0, sink: BufWriter::new(sink) })
+    fn joined(&self, _at: &Laid, shell: Arc<Shell>) -> Result<Writing, Failure> {
+        Ok(Writing { shell, into: self.into.clone(), sink: Rc::clone(&self.sink), written: 0 })
     }
+}
 
-    fn hear(&self, session: &mut Writing, said: Line) -> Result<(), Failure> {
+impl Reacting for Writing {
+    /// How many lines this shell wrote. What they said is in the file.
+    type Kept = usize;
+
+    fn hear(&mut self, said: Line) -> Result<(), Failure> {
         let at = || format!("writing {}", self.into.display());
 
-        writeln!(session.sink, "{} {}", said.sent.pid, said.words.join(" ")).doing(at)?;
-        session.written += 1;
+        writeln!(self.sink.borrow_mut(), "{} {}", self.shell.pid, said.words.join(" ")).doing(at)?;
+        self.written += 1;
 
         Ok(())
     }
 
-    fn end(&self, session: &mut Writing) -> Result<(), Failure> {
-        session.sink.flush().doing(|| format!("flushing {}", self.into.display()))
+    fn finish(self) -> Result<usize, Failure> {
+        self.sink.borrow_mut().flush().doing(|| format!("flushing {}", self.into.display()))?;
+
+        Ok(self.written)
     }
 }
 
@@ -60,16 +88,19 @@ fn a_session_may_hold_a_resource_and_keep_no_messages() {
     )]);
     let into = scripts.at("said.log");
 
-    let (session, status) = Logging { into: into.clone() }.run(&bash(scripts.at("main.bash")))
+    let ran = Logging::writing(into.clone())
+        .unwrap()
+        .run(&bash(scripts.at("main.bash")))
         .unwrap()
         .whole()
         .unwrap();
 
-    assert_eq!(status, ExitStatus::Code(0));
+    assert_eq!(ran.subject, ExitStatus::Code(0));
 
-    // Two shells and three `say`s. A shell's account of itself is a message
-    // like any other, and a session that keeps nothing still hears it.
-    assert_eq!(session.written, 5, "what the script said, and what each shell said it was");
+    // Two shells and three `say`s. A shell announcing itself is not a message:
+    // it is what makes the shell, and what a reaction is built from.
+    assert_eq!(ran.shells.len(), 2, "the subshell is a shell of its own");
+    assert_eq!(ran.shells.iter().map(|at| at.kept).sum::<usize>(), 3, "what the script said");
 
     let log = std::fs::read_to_string(&into).unwrap();
     assert_eq!(log.lines().filter(|line| line.contains("REC")).count(), 3);
