@@ -8,12 +8,13 @@
 //! that shell's own — and where an answer's bash goes is the session's own
 //! workspace, which every reaction is handed at construction.
 
+use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    field, Answer, Driving, ExitStatus, Failure, Layout, Message, Reacting, Rig, Setup, Shell,
-    Workspace,
+    field, Answer, Driving, ExitStatus, Failure, Layout, Message, Reaching, Reacting, Rig, Setup,
+    Shell, Workspace,
 };
 
 use crate::support::{bash, sourcing, Scripts};
@@ -120,7 +121,11 @@ impl Reacting for Conversation {
     }
 }
 
-impl Driving for Choosing {}
+impl Driving for Choosing {
+    fn environment(&self, at: &Layout) -> Vec<(OsString, OsString)> {
+        Reaching::BashEnv.environment(at)
+    }
+}
 
 #[tokio::test]
 async fn each_turn_is_computed_from_what_the_other_side_said() {

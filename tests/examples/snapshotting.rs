@@ -1,7 +1,7 @@
 //! Reusing another tool's instrument: bashcap's bash and its decoder, with no
 //! command line and no JSON in between.
 //!
-//! `bashcap run_bash_env --into out.jsonl --trace-calls bash script.bash` is
+//! `bashcap run --into out.jsonl --trace-calls bash script.bash` is
 //! this rig writing to a file. Here each shell's reaction keeps typed captures,
 //! so what is reused is exactly the pair that matters — the bash that harvests
 //! a shell, and the code that reads one back. The rendering comes with them:
@@ -9,11 +9,12 @@
 //!
 //! `cargo test --test examples -- --nocapture snapshotting`
 
+use std::ffi::OsString;
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reacting, Rig, Setup, Shell,
-    Workspace,
+    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reaching, Reacting, Rig, Setup,
+    Shell, Workspace,
 };
 use mb_resolver::bashcap::{instrument, Capture, Tracing};
 
@@ -74,7 +75,11 @@ impl Reacting for Seen {
     }
 }
 
-impl Driving for Snapshots {}
+impl Driving for Snapshots {
+    fn environment(&self, at: &Layout) -> Vec<(OsString, OsString)> {
+        Reaching::BashEnv.environment(at)
+    }
+}
 
 #[tokio::test]
 async fn a_tools_instrument_is_reusable_without_its_command_line() {

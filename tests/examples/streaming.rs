@@ -11,6 +11,7 @@
 //! This is the shape `bashcap` takes.
 
 use std::cell::RefCell;
+use std::ffi::OsString;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
@@ -18,8 +19,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reacting, Rig, Setup, Shell,
-    Workspace,
+    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reaching, Reacting, Rig, Setup,
+    Shell, Workspace,
 };
 
 use crate::support::{bash, Scripts};
@@ -89,7 +90,11 @@ impl Reacting for Writing {
     }
 }
 
-impl Driving for Logging {}
+impl Driving for Logging {
+    fn environment(&self, at: &Layout) -> Vec<(OsString, OsString)> {
+        Reaching::BashEnv.environment(at)
+    }
+}
 
 #[tokio::test]
 async fn a_session_may_hold_a_resource_and_keep_no_messages() {
