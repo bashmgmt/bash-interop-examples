@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
     Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reaching, Reacting, Rig, Setup,
-    Shell, Workspace,
+    Shell,
 };
 
 use crate::support::{bash, Scripts};
@@ -55,7 +55,7 @@ impl Rig for Logging {
 
     /// No words of its own in the subject's shells: only the label.
     fn setup(&self) -> Setup {
-        Setup { bash: "BC_JOIN LOG\n".to_string(), workspace: Workspace::Temporary }
+        Setup { label: "LOG".to_string(), bash: String::new() }
     }
 
     async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Writing, Failure> {

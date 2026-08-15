@@ -11,7 +11,6 @@ use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
     field, heard, Driving, ExitStatus, Failure, Layout, Message, Reaching, Rig, Setup, Shell,
-    Workspace,
 };
 
 use crate::support::{bash, Scripts};
@@ -25,7 +24,7 @@ impl Rig for Keeping {
 
     /// The label alone: `BC_INSTR KEEP …` is what the script says.
     fn setup(&self) -> Setup {
-        Setup { bash: "BC_JOIN KEEP\n".to_string(), workspace: Workspace::Temporary }
+        Setup { label: "KEEP".to_string(), bash: String::new() }
     }
 
     async fn joined(&self, _at: &Layout, _shell: Arc<Shell>) -> Result<Vec<Message>, Failure> {

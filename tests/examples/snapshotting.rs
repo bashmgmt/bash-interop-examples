@@ -14,9 +14,9 @@ use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
     Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reaching, Reacting, Rig, Setup,
-    Shell, Workspace,
+    Shell,
 };
-use mb_resolver::bashcap::{instrument, Capture, Tracing};
+use mb_resolver::bashcap::{instrument, Capture, Tracing, LABEL};
 
 use crate::fixture;
 use crate::support::bash;
@@ -40,7 +40,7 @@ impl Rig for Snapshots {
     /// subshells, so a subject with traps of its own behaves differently
     /// under it. That is why it is asked for rather than assumed.
     fn setup(&self) -> Setup {
-        Setup { bash: instrument(Tracing::Calls), workspace: Workspace::Temporary }
+        Setup { label: LABEL.to_string(), bash: instrument(Tracing::Calls) }
     }
 
     async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Seen, Failure> {

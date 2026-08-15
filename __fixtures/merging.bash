@@ -13,7 +13,8 @@ source "${BASH_SOURCE[0]%/*}/../../assets/joining.bash"
 # The array is this script's, and so is its name. The server is told which one
 # to write into, on the command line the client builds.
 declare -a heard=()
-BC_START "$@" serve --into heard
+__workspace="$(mktemp -d)"
+BC_START "$@" serve --at "$__workspace" --into heard
 
 # Each entry is `<shell> <µs into the session> <µs in flight> <words>`, and the
 # words are a bash array literal — one level to unpack, and the boundaries the
@@ -48,5 +49,7 @@ report
 BC_INSTR MERGE ask MERGE nonsense || echo "unknown question: $?"
 
 # The session is this script's to end: let go, and wait for what it started.
+# The workspace was this script's to name, so it is this script's to remove.
 BC_LEAVE
 echo "server exited $?"
+rm -rf "$__workspace"

@@ -23,12 +23,13 @@
 
 use std::cell::RefCell;
 use std::iter::once;
+use std::path::PathBuf;
 use std::process::Command;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    Answer, Failure, Layout, Message, Reacting, Rig, Serving, Setup, Shell, Workspace,
+    Answer, Failure, Layout, Message, Reacting, Rig, Serving, Setup, Shell,
 };
 use mb_resolver::bash::value::emit_array;
 
@@ -41,7 +42,6 @@ __merge_into() {
     shift
     __merge_target=("$@")
 }
-BC_JOIN MERGE
 "#;
 
 /// Everything the shells have said. The client's array is a projection of this
@@ -68,7 +68,7 @@ impl Rig for Merging {
     type Reaction = Merges;
 
     fn setup(&self) -> Setup {
-        Setup { bash: MERGE_INTO.to_string(), workspace: Workspace::Temporary }
+        Setup { label: "MERGE".to_string(), bash: MERGE_INTO.to_string() }
     }
 
     async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Merges, Failure> {
@@ -132,24 +132,27 @@ async fn main() {
     let mut argv = std::env::args().skip(1);
 
     match argv.next().as_deref() {
-        Some("serve") => serve(into(&mut argv)).await,
+        Some("serve") => {
+            let (at, into) = arguments(&mut argv);
+            serve(at, into).await;
+        }
         _ => demonstrate(),
     }
 }
 
-/// `serve --into <array>`.
-fn into(argv: &mut impl Iterator<Item = String>) -> String {
-    match (argv.next().as_deref(), argv.next()) {
-        (Some("--into"), Some(name)) => name,
-        _ => panic!("usage: merging serve --into <array>"),
+/// `serve --at <dir> --into <array>`.
+fn arguments(argv: &mut impl Iterator<Item = String>) -> (PathBuf, String) {
+    match (argv.next().as_deref(), argv.next(), argv.next().as_deref(), argv.next()) {
+        (Some("--at"), Some(at), Some("--into"), Some(name)) => (at.into(), name),
+        _ => panic!("usage: merging serve --at <dir> --into <array>"),
     }
 }
 
 /// The server the fixture starts. It holds our standard input and reads the
 /// address from our standard output; `BC_START` is the word that does both.
-async fn serve(into: String) {
+async fn serve(at: PathBuf, into: String) {
     let merging = Merging { into, heard: Rc::new(RefCell::new(Vec::new())) };
-    let served = merging.serve_coprocess().await.expect("the session");
+    let served = merging.serve_coprocess(&at).await.expect("the session");
 
     assert!(served.failed.is_none(), "the session closed up cleanly");
 }

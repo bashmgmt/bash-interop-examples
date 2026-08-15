@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
     field, Answer, Driving, ExitStatus, Failure, Layout, Message, Reaching, Reacting, Rig, Setup,
-    Shell, Workspace,
+    Shell,
 };
 
 use crate::support::{bash, sourcing, Scripts};
@@ -27,7 +27,6 @@ REFUSE() {
     printf 'operator: %s\n' "$1" >&2
     return "$2"
 }
-BC_JOIN CHOOSE
 "#;
 
 struct Choosing;
@@ -73,7 +72,7 @@ impl Rig for Choosing {
     type Reaction = Conversation;
 
     fn setup(&self) -> Setup {
-        Setup { bash: OPERATOR_BASH.to_string(), workspace: Workspace::Temporary }
+        Setup { label: "CHOOSE".to_string(), bash: OPERATOR_BASH.to_string() }
     }
 
     async fn joined(&self, at: &Layout, shell: Arc<Shell>) -> Result<Conversation, Failure> {
