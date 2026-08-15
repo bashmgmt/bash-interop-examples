@@ -2,25 +2,36 @@
 //!
 //! The rig contributes no bash: `STEP` is a word this script chose, and
 //! `behind` is how a decoder claims it. Nor does it contribute a reaction —
-//! `Vec<Line>` is one already, and keeping every message is all this wants.
+//! `Vec<Message>` is one already, and keeping every message is all this wants.
 
 use std::sync::Arc;
 
-use mb_resolver::bash::rig::{field, heard, ExitStatus, Failure, Laid, Line, Master, Rig, Shell};
+use mb_resolver::bash::rig::{
+    field, heard, Driving, ExitStatus, Failure, Layout, Message, Rig, Shell, Workspace,
+};
 
 use crate::support::{bash, Scripts};
 
 struct Keeping;
 
 impl Rig for Keeping {
-    type Attending = Vec<Line>;
+    type Reaction = Vec<Message>;
 
-    fn joined(&self, _at: &Laid, _shell: Arc<Shell>) -> Result<Vec<Line>, Failure> {
+    /// No words of its own in the subject's shells.
+    fn bash(&self) -> String {
+        String::new()
+    }
+
+    fn workspace(&self) -> Workspace {
+        Workspace::Temporary
+    }
+
+    fn joined(&self, _at: &Layout, _shell: Arc<Shell>) -> Result<Vec<Message>, Failure> {
         Ok(Vec::new())
     }
 }
 
-impl Master for Keeping {}
+impl Driving for Keeping {}
 
 #[derive(Debug, PartialEq, Eq)]
 struct Step {
@@ -31,8 +42,8 @@ struct Step {
 /// Recognise, then decode. `None` means some other tool's message, `Some(Err)`
 /// means ours and malformed — which is what lets several tools share one wire
 /// while a decode failure stays visible.
-fn step(line: &Line) -> Option<Result<Step, String>> {
-    let words = line.behind("STEP")?;
+fn step(message: &Message) -> Option<Result<Step, String>> {
+    let words = message.behind("STEP")?;
     let at = |key: &str| field(words, key).ok_or_else(|| format!("no {key:?}"));
 
     Some((|| {
@@ -73,7 +84,7 @@ fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
     // the run read them. Each message comes with the shell that sent it.
     let said = heard(&ran.shells);
 
-    let steps: Vec<Step> = said.iter().filter_map(|said| step(said.line)).map(Result::unwrap).collect();
+    let steps: Vec<Step> = said.iter().filter_map(|said| step(said.message)).map(Result::unwrap).collect();
     assert_eq!(
         steps,
         [
@@ -82,7 +93,7 @@ fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
         ]
     );
 
-    let total: Vec<&[String]> = said.iter().filter_map(|said| said.line.behind("TOTAL")).collect();
+    let total: Vec<&[String]> = said.iter().filter_map(|said| said.message.behind("TOTAL")).collect();
     assert_eq!(
         total,
         [["alpha", "beta with spaces"]],

@@ -6,7 +6,7 @@
 //!
 //! `cargo test --test examples -- --nocapture profiling`
 
-use mb_resolver::bash::rig::{heard, ExitStatus, Master};
+use mb_resolver::bash::rig::{heard, Driving, ExitStatus};
 use mb_resolver::bashprof::{recorded, BashProf, Profile};
 
 use crate::support::{bash, Scripts};
@@ -19,11 +19,11 @@ const BUILD: &str = r#"
     test()    { sleep 0.03; }
 
     build() {
-        BASHPROF_TIME_CPS compile compile
-        BASHPROF_TIME_CPS test test
+        BASHPROF_TIMETHIS compile compile
+        BASHPROF_TIMETHIS test test
     }
 
-    BASHPROF_TIME_CPS build build
+    BASHPROF_TIMETHIS build build
     "#;
 
 #[test]
@@ -61,7 +61,7 @@ fn a_run_is_read_as_a_tree_and_then_as_measurements() {
     assert!(build.exclusive() < build.complete.took(), "most of which was inside its children");
 
     // Where the call was made, which the nesting alone does not say.
-    let at = build.complete.call.stack.at();
+    let at = build.complete.call.stack.top();
     assert_eq!(at.site.to_string(), "main");
     assert!(at.source.found().is_some(), "and the file it was made in is right there");
 }
@@ -76,8 +76,8 @@ fn a_run_that_died_mid_call_still_measured_what_completed() {
         ok()     { :; }
         broken() { false; }
 
-        BASHPROF_TIME_CPS ok ok
-        BASHPROF_TIME_CPS doomed broken
+        BASHPROF_TIMETHIS ok ok
+        BASHPROF_TIMETHIS doomed broken
         "#,
     )]);
 

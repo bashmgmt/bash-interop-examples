@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    Doing, ExitStatus, Failure, Laid, Line, Master, Reacting, Rig, Shell,
+    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reacting, Rig, Shell, Workspace,
 };
 use mb_resolver::bashcap::{instrument, Capture, Tracing};
 
@@ -30,7 +30,11 @@ struct Seen {
 }
 
 impl Rig for Snapshots {
-    type Attending = Seen;
+    type Reaction = Seen;
+
+    fn workspace(&self) -> Workspace {
+        Workspace::Temporary
+    }
 
     /// bashcap's instrument, in every shell the subject starts, asking for
     /// the full stack. `Tracing::Calls` is not free: `extdebug` also makes
@@ -41,7 +45,7 @@ impl Rig for Snapshots {
         instrument(Tracing::Calls)
     }
 
-    fn joined(&self, _at: &Laid, shell: Arc<Shell>) -> Result<Seen, Failure> {
+    fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Seen, Failure> {
         Ok(Seen { shell, captures: Vec::new() })
     }
 }
@@ -51,7 +55,7 @@ impl Reacting for Seen {
 
     /// Recognise, then decode. `None` is some other tool's message, and a
     /// snapshot that will not decode ends the run.
-    fn hear(&mut self, said: Line) -> Result<(), Failure> {
+    fn hear(&mut self, said: Message) -> Result<(), Failure> {
         let Some(decoded) = Capture::of(&said, &self.shell) else {
             return Ok(());
         };
@@ -61,12 +65,19 @@ impl Reacting for Seen {
         Ok(())
     }
 
+    /// It only listens, so a question is heard and the word reported unknown.
+    fn answer(&mut self, asked: Message) -> Result<Answer, Failure> {
+        self.hear(asked)?;
+
+        Ok(Answer::unknown())
+    }
+
     fn finish(self) -> Result<Vec<Capture>, Failure> {
         Ok(self.captures)
     }
 }
 
-impl Master for Snapshots {}
+impl Driving for Snapshots {}
 
 #[test]
 fn a_tools_instrument_is_reusable_without_its_command_line() {

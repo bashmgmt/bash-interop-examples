@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    field, Answer, ExitStatus, Failure, Laid, Line, Master, Reacting, Rig, Shell,
+    field, Answer, Driving, ExitStatus, Failure, Layout, Message, Reacting, Rig, Shell, Workspace,
 };
 
 use crate::support::{bash, sourcing, Scripts};
@@ -33,7 +33,7 @@ struct Choosing;
 struct Conversation {
     shell: Arc<Shell>,
     dir: PathBuf,
-    heard: Vec<Line>,
+    heard: Vec<Message>,
 }
 
 impl Conversation {
@@ -57,37 +57,41 @@ struct Candidate {
     weight: usize,
 }
 
-fn candidate(line: &Line) -> Option<Candidate> {
-    let words = line.behind("CANDIDATE")?;
+fn candidate(message: &Message) -> Option<Candidate> {
+    let words = message.behind("CANDIDATE")?;
     let weight = field(words, "weight")?.parse().ok()?;
 
     Some(Candidate { name: field(words, "name")?.to_string(), weight })
 }
 
 impl Rig for Choosing {
-    type Attending = Conversation;
+    type Reaction = Conversation;
+
+    fn workspace(&self) -> Workspace {
+        Workspace::Temporary
+    }
 
     fn bash(&self) -> String {
         OPERATOR_BASH.to_string()
     }
 
-    fn joined(&self, at: &Laid, shell: Arc<Shell>) -> Result<Conversation, Failure> {
+    fn joined(&self, at: &Layout, shell: Arc<Shell>) -> Result<Conversation, Failure> {
         Ok(Conversation { shell, dir: at.dir.clone(), heard: Vec::new() })
     }
 }
 
 impl Reacting for Conversation {
-    type Kept = Vec<Line>;
+    type Kept = Vec<Message>;
 
-    fn hear(&mut self, said: Line) -> Result<(), Failure> {
+    fn hear(&mut self, said: Message) -> Result<(), Failure> {
         self.heard.push(said);
 
         Ok(())
     }
 
-    fn answer(&mut self, asked: Line) -> Result<Answer, Failure> {
+    fn answer(&mut self, asked: Message) -> Result<Answer, Failure> {
         let phase = asked.words.last().cloned().unwrap_or_default();
-        let step = self.step(asked.sent.seq);
+        let step = self.step(asked.stamp.seq);
         self.heard.push(asked);
 
         match phase.as_str() {
@@ -110,12 +114,12 @@ impl Reacting for Conversation {
         }
     }
 
-    fn finish(self) -> Result<Vec<Line>, Failure> {
+    fn finish(self) -> Result<Vec<Message>, Failure> {
         Ok(self.heard)
     }
 }
 
-impl Master for Choosing {}
+impl Driving for Choosing {}
 
 #[test]
 fn each_turn_is_computed_from_what_the_other_side_said() {
@@ -133,7 +137,7 @@ fn each_turn_is_computed_from_what_the_other_side_said() {
     let ran = Choosing.run(&bash(scripts.at("session.bash"))).unwrap().whole().unwrap();
 
     let marks: Vec<&[String]> =
-        ran.shells[0].kept.iter().filter_map(|line| line.behind("MARK")).collect();
+        ran.shells[0].kept.iter().filter_map(|message| message.behind("MARK")).collect();
     assert_eq!(
         marks,
         [["settled on elderberry"]],

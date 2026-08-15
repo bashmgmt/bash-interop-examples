@@ -16,7 +16,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    Doing, ExitStatus, Failure, Laid, Line, Master, Reacting, Rig, Shell,
+    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reacting, Rig, Shell, Workspace,
 };
 
 use crate::support::{bash, Scripts};
@@ -47,9 +47,18 @@ struct Writing {
 }
 
 impl Rig for Logging {
-    type Attending = Writing;
+    type Reaction = Writing;
 
-    fn joined(&self, _at: &Laid, shell: Arc<Shell>) -> Result<Writing, Failure> {
+    /// No words of its own in the subject's shells.
+    fn bash(&self) -> String {
+        String::new()
+    }
+
+    fn workspace(&self) -> Workspace {
+        Workspace::Temporary
+    }
+
+    fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Writing, Failure> {
         Ok(Writing { shell, into: self.into.clone(), sink: Rc::clone(&self.sink), written: 0 })
     }
 }
@@ -58,13 +67,20 @@ impl Reacting for Writing {
     /// How many lines this shell wrote. What they said is in the file.
     type Kept = usize;
 
-    fn hear(&mut self, said: Line) -> Result<(), Failure> {
+    fn hear(&mut self, said: Message) -> Result<(), Failure> {
         let at = || format!("writing {}", self.into.display());
 
         writeln!(self.sink.borrow_mut(), "{} {}", self.shell.pid, said.words.join(" ")).doing(at)?;
         self.written += 1;
 
         Ok(())
+    }
+
+    /// It only listens, so a question is heard and the word reported unknown.
+    fn answer(&mut self, asked: Message) -> Result<Answer, Failure> {
+        self.hear(asked)?;
+
+        Ok(Answer::unknown())
     }
 
     fn finish(self) -> Result<usize, Failure> {
@@ -74,7 +90,7 @@ impl Reacting for Writing {
     }
 }
 
-impl Master for Logging {}
+impl Driving for Logging {}
 
 #[test]
 fn a_session_may_hold_a_resource_and_keep_no_messages() {

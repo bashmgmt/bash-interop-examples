@@ -26,7 +26,9 @@ use std::process::Command;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use mb_resolver::bash::rig::{Answer, Failure, Laid, Line, Reacting, Rig, Shell, Slave};
+use mb_resolver::bash::rig::{
+    Answer, Failure, Layout, Message, Reacting, Rig, Serving, Shell, Workspace,
+};
 use mb_resolver::bash::value::emit_array;
 
 /// The word the rig's own answers call. A nameref is how bash lets a callee
@@ -43,7 +45,7 @@ __merge_into() {
 /// Everything the shells have said, in the order the session heard it. The
 /// client's array is a projection of this and never a second copy of it — which
 /// is why nothing here counts what has already been handed over.
-type Merged = Rc<RefCell<Vec<(Arc<Shell>, Line)>>>;
+type Merged = Rc<RefCell<Vec<(Arc<Shell>, Message)>>>;
 
 /// The rig: it merges what it heard, and writes the merge where it was told.
 struct Merging {
@@ -61,13 +63,17 @@ struct Merges {
 }
 
 impl Rig for Merging {
-    type Attending = Merges;
+    type Reaction = Merges;
+
+    fn workspace(&self) -> Workspace {
+        Workspace::Temporary
+    }
 
     fn bash(&self) -> String {
         MERGE_INTO.to_string()
     }
 
-    fn joined(&self, _at: &Laid, shell: Arc<Shell>) -> Result<Merges, Failure> {
+    fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Merges, Failure> {
         Ok(Merges { shell, into: self.into.clone(), heard: Rc::clone(&self.heard) })
     }
 }
@@ -76,7 +82,7 @@ impl Reacting for Merges {
     /// The merge is the shared list; a shell keeps nothing of its own.
     type Kept = ();
 
-    fn hear(&mut self, said: Line) -> Result<(), Failure> {
+    fn hear(&mut self, said: Message) -> Result<(), Failure> {
         self.heard.borrow_mut().push((Arc::clone(&self.shell), said));
 
         Ok(())
@@ -84,7 +90,7 @@ impl Reacting for Merges {
 
     /// `MERGE` alone, and nothing else. The question is not kept: it is a turn
     /// in the protocol, not something a shell said.
-    fn answer(&mut self, asked: Line) -> Result<Answer, Failure> {
+    fn answer(&mut self, asked: Message) -> Result<Answer, Failure> {
         let Some([]) = asked.behind("MERGE") else { return Ok(Answer::status(127)) };
         let entries = merged(&self.heard.borrow());
 
@@ -96,27 +102,27 @@ impl Reacting for Merges {
     }
 }
 
-impl Slave for Merging {}
+impl Serving for Merging {}
 
 /// The list as the client gets it, offsets counted from the first message.
 ///
 /// A shell opens with an account of itself, which is what makes the shell and
 /// gives it its number. It is not something the shell *said*, so it cannot be a
 /// message here and there is nothing to filter out.
-fn merged(heard: &[(Arc<Shell>, Line)]) -> Vec<String> {
+fn merged(heard: &[(Arc<Shell>, Message)]) -> Vec<String> {
     let Some((_, first)) = heard.first() else { return Vec::new() };
 
-    heard.iter().map(|(shell, line)| entry(shell, line, first)).collect()
+    heard.iter().map(|(shell, message)| entry(shell, message, first)).collect()
 }
 
 /// One line of the merge: which shell, how far into the session, how long the
 /// message took to arrive, and the words themselves as a bash array literal —
 /// so the client unpacks one level and gets its word boundaries back.
-fn entry(shell: &Shell, line: &Line, first: &Line) -> String {
-    let since = line.sent.heard_at.0 - first.sent.heard_at.0;
-    let travelled = line.sent.heard_at.0.abs_diff(line.sent.sent_at.0);
+fn entry(shell: &Shell, message: &Message, first: &Message) -> String {
+    let since = message.stamp.heard_at.0 - first.stamp.heard_at.0;
+    let travelled = message.stamp.heard_at.0.abs_diff(message.stamp.sent_at.0);
 
-    format!("{} {since} {travelled} {}", shell.nth + 1, emit_array(&line.words))
+    format!("{} {since} {travelled} {}", shell.nth + 1, emit_array(&message.words))
 }
 
 fn main() {
