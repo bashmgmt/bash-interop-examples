@@ -1,10 +1,10 @@
 //! A session that keeps what a script says, and a decoder that reads it back.
 //!
-//! The rig contributes no bash but its label: `STEP` is a word this script
+//! The rig contributes no bash but its join: `STEP` is a word this script
 //! chose, and `behind` is how a decoder claims it. Nor does it contribute a
 //! reaction — `Vec<Message>` is one already, and keeping every message is all
-//! this wants. What it does decide is how its shells find the session: the
-//! two tests below are the two answers.
+//! this wants. How its shells find the session is the run's decision, not
+//! the rig's: the two tests below are the two answers, spelled as `Reached`.
 
 use std::sync::Arc;
 

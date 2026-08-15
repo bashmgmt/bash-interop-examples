@@ -52,7 +52,7 @@ struct Writing {
 impl Rig for Logging {
     type Reaction = Writing;
 
-    /// No words of its own in the subject's shells: only the label.
+    /// No words of its own in the subject's shells: only the join.
     fn bash(&self) -> String {
         "BC_JOIN LOG \"$1\"\n".to_string()
     }
