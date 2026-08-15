@@ -12,19 +12,21 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    field, Answer, Driving, ExitStatus, Failure, Layout, Message, Reacting, Rig, Shell, Workspace,
+    field, Answer, Driving, ExitStatus, Failure, Layout, Message, Reacting, Rig, Setup, Shell,
+    Workspace,
 };
 
 use crate::support::{bash, sourcing, Scripts};
 
 const OPERATOR_BASH: &str = r#"
 MARK() {
-    BC_INSTR say MARK "$@";
+    BC_INSTR CHOOSE say MARK "$@";
 }
 REFUSE() {
     printf 'operator: %s\n' "$1" >&2
     return "$2"
 }
+BC_JOIN CHOOSE
 "#;
 
 struct Choosing;
@@ -34,6 +36,7 @@ struct Conversation {
     shell: Arc<Shell>,
     dir: PathBuf,
     heard: Vec<Message>,
+    asked: usize,
 }
 
 impl Conversation {
@@ -46,9 +49,10 @@ impl Conversation {
             .map(|found| found.name)
     }
 
-    /// A file of this session's own to write an answer's bash into.
-    fn step(&self, seq: u32) -> PathBuf {
-        self.dir.join(format!("step.{}.{seq}.bash", self.shell.pid))
+    /// A file of this session's own to write an answer's bash into, one per
+    /// question this shell has asked.
+    fn step(&self) -> PathBuf {
+        self.dir.join(format!("step.{}.{}.bash", self.shell.pid, self.asked))
     }
 }
 
@@ -67,31 +71,28 @@ fn candidate(message: &Message) -> Option<Candidate> {
 impl Rig for Choosing {
     type Reaction = Conversation;
 
-    fn workspace(&self) -> Workspace {
-        Workspace::Temporary
+    fn setup(&self) -> Setup {
+        Setup { bash: OPERATOR_BASH.to_string(), workspace: Workspace::Temporary }
     }
 
-    fn bash(&self) -> String {
-        OPERATOR_BASH.to_string()
-    }
-
-    fn joined(&self, at: &Layout, shell: Arc<Shell>) -> Result<Conversation, Failure> {
-        Ok(Conversation { shell, dir: at.dir.clone(), heard: Vec::new() })
+    async fn joined(&self, at: &Layout, shell: Arc<Shell>) -> Result<Conversation, Failure> {
+        Ok(Conversation { shell, dir: at.dir.clone(), heard: Vec::new(), asked: 0 })
     }
 }
 
 impl Reacting for Conversation {
     type Kept = Vec<Message>;
 
-    fn hear(&mut self, said: Message) -> Result<(), Failure> {
+    async fn hear(&mut self, said: Message) -> Result<(), Failure> {
         self.heard.push(said);
 
         Ok(())
     }
 
-    fn answer(&mut self, asked: Message) -> Result<Answer, Failure> {
+    async fn answer(&mut self, asked: Message) -> Result<Answer, Failure> {
         let phase = asked.words.last().cloned().unwrap_or_default();
-        let step = self.step(asked.stamp.seq);
+        self.asked += 1;
+        let step = self.step();
         self.heard.push(asked);
 
         match phase.as_str() {
@@ -100,7 +101,7 @@ impl Reacting for Conversation {
             "survey" => sourcing(
                 &step,
                 r#"
-                inspect() { BC_INSTR say CANDIDATE name "$1" weight "${#1}"; }
+                inspect() { BC_INSTR CHOOSE say CANDIDATE name "$1" weight "${#1}"; }
                 for item in pear kiwi elderberry; do inspect "$item"; done
                 "#,
             ),
@@ -114,27 +115,27 @@ impl Reacting for Conversation {
         }
     }
 
-    fn finish(self) -> Result<Vec<Message>, Failure> {
+    async fn finish(self) -> Result<Vec<Message>, Failure> {
         Ok(self.heard)
     }
 }
 
 impl Driving for Choosing {}
 
-#[test]
-fn each_turn_is_computed_from_what_the_other_side_said() {
+#[tokio::test]
+async fn each_turn_is_computed_from_what_the_other_side_said() {
     let scripts = Scripts::of(&[(
         "session.bash",
         r#"
-        BC_INSTR ask phase survey
-        BC_INSTR ask phase choose
+        BC_INSTR CHOOSE ask phase survey
+        BC_INSTR CHOOSE ask phase choose
         MARK "settled on $picked"
-        BC_INSTR ask phase nonsense || exit $?
+        BC_INSTR CHOOSE ask phase nonsense || exit $?
         MARK unreachable
         "#,
     )]);
 
-    let ran = Choosing.run(&bash(scripts.at("session.bash"))).unwrap().whole().unwrap();
+    let ran = Choosing.run(&bash(scripts.at("session.bash"))).await.unwrap().whole().unwrap();
 
     let marks: Vec<&[String]> =
         ran.shells[0].kept.iter().filter_map(|message| message.behind("MARK")).collect();

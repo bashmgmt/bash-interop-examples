@@ -26,18 +26,18 @@ const BUILD: &str = r#"
     BASHPROF_TIMETHIS build build
     "#;
 
-#[test]
-fn a_run_is_read_as_a_tree_and_then_as_measurements() {
+#[tokio::test]
+async fn a_run_is_read_as_a_tree_and_then_as_measurements() {
     let scripts = Scripts::of(&[("build.bash", BUILD)]);
 
     // Step one: run it. Every shell that joined kept what it said.
-    let ran = BashProf.run(&bash(scripts.at("build.bash"))).unwrap().whole().unwrap();
+    let ran = BashProf.run(&bash(scripts.at("build.bash"))).await.unwrap().whole().unwrap();
     assert_eq!(ran.subject, ExitStatus::Code(0), "the subject's own status, as always");
 
     // Step two: read those messages as the tree the calls made. `heard` puts
-    // the per-shell foldings back in arrival order, each message with the shell
-    // that sent it — a walk means nothing without it. Every call that began is
-    // in the tree, whether or not it ended.
+    // the per-shell foldings back in the order they were said, each message
+    // with the shell that sent it — a walk means nothing without it. Every
+    // call that began is in the tree, whether or not it ended.
     let forest = recorded(&heard(&ran.shells)).expect("the instrument's own messages");
     println!("as recorded:\n{}\n", mb_resolver::bashprof::Recorded::render(&forest));
 
@@ -68,8 +68,8 @@ fn a_run_is_read_as_a_tree_and_then_as_measurements() {
 
 /// The other shape: the shell dies inside a call, so there is no whole
 /// profile — and the measurements that did complete are no less true for it.
-#[test]
-fn a_run_that_died_mid_call_still_measured_what_completed() {
+#[tokio::test]
+async fn a_run_that_died_mid_call_still_measured_what_completed() {
     let scripts = Scripts::of(&[(
         "build.bash",
         r#"set -e
@@ -81,7 +81,7 @@ fn a_run_that_died_mid_call_still_measured_what_completed() {
         "#,
     )]);
 
-    let ran = BashProf.run(&bash(scripts.at("build.bash"))).unwrap().whole().unwrap();
+    let ran = BashProf.run(&bash(scripts.at("build.bash"))).await.unwrap().whole().unwrap();
     assert_eq!(ran.subject, ExitStatus::Code(1), "the subject failed, so the run reports that");
 
     let forest = recorded(&heard(&ran.shells)).unwrap();

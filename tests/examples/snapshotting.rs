@@ -12,7 +12,8 @@
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reacting, Rig, Shell, Workspace,
+    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reacting, Rig, Setup, Shell,
+    Workspace,
 };
 use mb_resolver::bashcap::{instrument, Capture, Tracing};
 
@@ -32,20 +33,16 @@ struct Seen {
 impl Rig for Snapshots {
     type Reaction = Seen;
 
-    fn workspace(&self) -> Workspace {
-        Workspace::Temporary
-    }
-
     /// bashcap's instrument, in every shell the subject starts, asking for
     /// the full stack. `Tracing::Calls` is not free: `extdebug` also makes
     /// `ERR`, `DEBUG` and `RETURN` traps inherited by functions and
     /// subshells, so a subject with traps of its own behaves differently
     /// under it. That is why it is asked for rather than assumed.
-    fn bash(&self) -> String {
-        instrument(Tracing::Calls)
+    fn setup(&self) -> Setup {
+        Setup { bash: instrument(Tracing::Calls), workspace: Workspace::Temporary }
     }
 
-    fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Seen, Failure> {
+    async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Seen, Failure> {
         Ok(Seen { shell, captures: Vec::new() })
     }
 }
@@ -55,7 +52,7 @@ impl Reacting for Seen {
 
     /// Recognise, then decode. `None` is some other tool's message, and a
     /// snapshot that will not decode ends the run.
-    fn hear(&mut self, said: Message) -> Result<(), Failure> {
+    async fn hear(&mut self, said: Message) -> Result<(), Failure> {
         let Some(decoded) = Capture::of(&said, &self.shell) else {
             return Ok(());
         };
@@ -66,22 +63,23 @@ impl Reacting for Seen {
     }
 
     /// It only listens, so a question is heard and the word reported unknown.
-    fn answer(&mut self, asked: Message) -> Result<Answer, Failure> {
-        self.hear(asked)?;
+    async fn answer(&mut self, asked: Message) -> Result<Answer, Failure> {
+        self.hear(asked).await?;
 
         Ok(Answer::unknown())
     }
 
-    fn finish(self) -> Result<Vec<Capture>, Failure> {
+    async fn finish(self) -> Result<Vec<Capture>, Failure> {
         Ok(self.captures)
     }
 }
 
 impl Driving for Snapshots {}
 
-#[test]
-fn a_tools_instrument_is_reusable_without_its_command_line() {
-    let ran = Snapshots.run(&bash(fixture("bashcap_demo/demo.bash"))).unwrap().whole().unwrap();
+#[tokio::test]
+async fn a_tools_instrument_is_reusable_without_its_command_line() {
+    let ran =
+        Snapshots.run(&bash(fixture("bashcap_demo/demo.bash"))).await.unwrap().whole().unwrap();
     assert_eq!(ran.subject, ExitStatus::Code(0));
 
     let seen: Vec<&Capture> = ran.shells.iter().flat_map(|at| &at.kept).collect();

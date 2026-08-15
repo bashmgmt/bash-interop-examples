@@ -2,9 +2,11 @@
 //!
 //! One reaction per shell, and one file for all of them. What is shared is the
 //! caller's own — the rig opens it and hands each reaction a share — which is
-//! why the core names no sharing discipline. `hear` writes as each message
-//! arrives, so resident memory does not track the run; `finish` flushes, so a
-//! failed flush ends the run rather than being lost in a `Drop`.
+//! why the core names no sharing discipline: the session is single-threaded,
+//! so an `Rc<RefCell<_>>` is a share, and the borrow is never held across an
+//! `.await`. `hear` writes as each message arrives, so resident memory does
+//! not track the run; `finish` flushes, so a failed flush ends the run rather
+//! than being lost in a `Drop`.
 //!
 //! This is the shape `bashcap` takes.
 
@@ -16,7 +18,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reacting, Rig, Shell, Workspace,
+    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reacting, Rig, Setup, Shell,
+    Workspace,
 };
 
 use crate::support::{bash, Scripts};
@@ -49,16 +52,12 @@ struct Writing {
 impl Rig for Logging {
     type Reaction = Writing;
 
-    /// No words of its own in the subject's shells.
-    fn bash(&self) -> String {
-        String::new()
+    /// No words of its own in the subject's shells: only the label.
+    fn setup(&self) -> Setup {
+        Setup { bash: "BC_JOIN LOG\n".to_string(), workspace: Workspace::Temporary }
     }
 
-    fn workspace(&self) -> Workspace {
-        Workspace::Temporary
-    }
-
-    fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Writing, Failure> {
+    async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Writing, Failure> {
         Ok(Writing { shell, into: self.into.clone(), sink: Rc::clone(&self.sink), written: 0 })
     }
 }
@@ -67,7 +66,7 @@ impl Reacting for Writing {
     /// How many lines this shell wrote. What they said is in the file.
     type Kept = usize;
 
-    fn hear(&mut self, said: Message) -> Result<(), Failure> {
+    async fn hear(&mut self, said: Message) -> Result<(), Failure> {
         let at = || format!("writing {}", self.into.display());
 
         writeln!(self.sink.borrow_mut(), "{} {}", self.shell.pid, said.words.join(" ")).doing(at)?;
@@ -77,13 +76,13 @@ impl Reacting for Writing {
     }
 
     /// It only listens, so a question is heard and the word reported unknown.
-    fn answer(&mut self, asked: Message) -> Result<Answer, Failure> {
-        self.hear(asked)?;
+    async fn answer(&mut self, asked: Message) -> Result<Answer, Failure> {
+        self.hear(asked).await?;
 
         Ok(Answer::unknown())
     }
 
-    fn finish(self) -> Result<usize, Failure> {
+    async fn finish(self) -> Result<usize, Failure> {
         self.sink.borrow_mut().flush().doing(|| format!("flushing {}", self.into.display()))?;
 
         Ok(self.written)
@@ -92,14 +91,14 @@ impl Reacting for Writing {
 
 impl Driving for Logging {}
 
-#[test]
-fn a_session_may_hold_a_resource_and_keep_no_messages() {
+#[tokio::test]
+async fn a_session_may_hold_a_resource_and_keep_no_messages() {
     let scripts = Scripts::of(&[(
         "main.bash",
         r#"
-        BC_INSTR say REC one
-        ( BC_INSTR say REC from-a-subshell )
-        BC_INSTR say REC two
+        BC_INSTR LOG say REC one
+        ( BC_INSTR LOG say REC from-a-subshell )
+        BC_INSTR LOG say REC two
         "#,
     )]);
     let into = scripts.at("said.log");
@@ -107,6 +106,7 @@ fn a_session_may_hold_a_resource_and_keep_no_messages() {
     let ran = Logging::writing(into.clone())
         .unwrap()
         .run(&bash(scripts.at("main.bash")))
+        .await
         .unwrap()
         .whole()
         .unwrap();

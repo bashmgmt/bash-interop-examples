@@ -1,13 +1,14 @@
 //! A session that keeps what a script says, and a decoder that reads it back.
 //!
-//! The rig contributes no bash: `STEP` is a word this script chose, and
-//! `behind` is how a decoder claims it. Nor does it contribute a reaction —
-//! `Vec<Message>` is one already, and keeping every message is all this wants.
+//! The rig contributes no bash but its label: `STEP` is a word this script
+//! chose, and `behind` is how a decoder claims it. Nor does it contribute a
+//! reaction — `Vec<Message>` is one already, and keeping every message is all
+//! this wants.
 
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    field, heard, Driving, ExitStatus, Failure, Layout, Message, Rig, Shell, Workspace,
+    field, heard, Driving, ExitStatus, Failure, Layout, Message, Rig, Setup, Shell, Workspace,
 };
 
 use crate::support::{bash, Scripts};
@@ -17,16 +18,12 @@ struct Keeping;
 impl Rig for Keeping {
     type Reaction = Vec<Message>;
 
-    /// No words of its own in the subject's shells.
-    fn bash(&self) -> String {
-        String::new()
+    /// The label alone: `BC_INSTR KEEP …` is what the script says.
+    fn setup(&self) -> Setup {
+        Setup { bash: "BC_JOIN KEEP\n".to_string(), workspace: Workspace::Temporary }
     }
 
-    fn workspace(&self) -> Workspace {
-        Workspace::Temporary
-    }
-
-    fn joined(&self, _at: &Layout, _shell: Arc<Shell>) -> Result<Vec<Message>, Failure> {
+    async fn joined(&self, _at: &Layout, _shell: Arc<Shell>) -> Result<Vec<Message>, Failure> {
         Ok(Vec::new())
     }
 }
@@ -54,8 +51,8 @@ fn step(message: &Message) -> Option<Result<Step, String>> {
     })())
 }
 
-#[test]
-fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
+#[tokio::test]
+async fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
     let scripts = Scripts::of(&[(
         "collect.bash",
         r#"
@@ -63,7 +60,7 @@ fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
 
             note() {
                 found+=("$1")
-                BC_INSTR say STEP name "$1" seen "${#found[@]}"
+                BC_INSTR KEEP say STEP name "$1" seen "${#found[@]}"
             }
 
             note alpha
@@ -71,17 +68,17 @@ fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
 
             # The accumulated array goes back in one message; word boundaries
             # survive because a message is a bash array, not a joined string.
-            BC_INSTR say TOTAL "${found[@]}"
+            BC_INSTR KEEP say TOTAL "${found[@]}"
             "#,
     )]);
 
-    let ran = Keeping.run(&bash(scripts.at("collect.bash"))).unwrap().whole().unwrap();
+    let ran = Keeping.run(&bash(scripts.at("collect.bash"))).await.unwrap().whole().unwrap();
 
     assert_eq!(ran.subject, ExitStatus::Code(0));
     assert_eq!(ran.shells.len(), 1, "provenance is the shape: one shell produced all of it");
 
     // A run folds per shell, and `heard` puts those foldings back in the order
-    // the run read them. Each message comes with the shell that sent it.
+    // they were said. Each message comes with the shell that sent it.
     let said = heard(&ran.shells);
 
     let steps: Vec<Step> = said.iter().filter_map(|said| step(said.message)).map(Result::unwrap).collect();

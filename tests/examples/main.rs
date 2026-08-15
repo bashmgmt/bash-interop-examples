@@ -9,8 +9,9 @@
 //! | [`profiling`] | timing a tree of calls, and the two shapes a run can have |
 //!
 //! Every one of them is the same pieces: a rig saying what bash the subject
-//! gets and how a reaction is built once a shell is there, and a reaction with
-//! whichever of `hear`/`answer`/`finish` it cares about.
+//! gets — ending in `BC_JOIN <LABEL>` — and how a reaction is built once a
+//! shell is there, and a reaction with whichever of `hear`/`answer`/`finish`
+//! it cares about. The tests are `#[tokio::test]`: a run is a future.
 //!
 //! All of them drive the run from Rust. `tests/joined/merging` is the other
 //! way round — a fixture script that starts a session of its own, two shells
