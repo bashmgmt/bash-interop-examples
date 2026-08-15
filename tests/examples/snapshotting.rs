@@ -9,11 +9,10 @@
 //!
 //! `cargo test --test examples -- --nocapture snapshotting`
 
-use std::ffi::OsString;
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reaching, Reacting, Rig, Setup,
+    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reached, Reaching, Reacting, Rig, Setup,
     Shell,
 };
 use mb_resolver::bashcap::{instrument, Capture, Tracing, LABEL};
@@ -75,16 +74,15 @@ impl Reacting for Seen {
     }
 }
 
-impl Driving for Snapshots {
-    fn environment(&self, at: &Layout) -> Vec<(OsString, OsString)> {
-        Reaching::BashEnv.environment(at)
-    }
-}
-
 #[tokio::test]
 async fn a_tools_instrument_is_reusable_without_its_command_line() {
     let ran =
-        Snapshots.run(&bash(fixture("bashcap_demo/demo.bash"))).await.unwrap().whole().unwrap();
+        Reached { rig: Snapshots, reaching: Reaching::BashEnv }
+            .run(&bash(fixture("bashcap_demo/demo.bash")))
+            .await
+            .unwrap()
+            .whole()
+            .unwrap();
     assert_eq!(ran.subject, ExitStatus::Code(0));
 
     let seen: Vec<&Capture> = ran.shells.iter().flat_map(|at| &at.kept).collect();

@@ -6,18 +6,15 @@
 //! this wants. What it does decide is how its shells find the session: the
 //! two tests below are the two answers.
 
-use std::ffi::OsString;
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    field, heard, Driving, ExitStatus, Failure, Layout, Message, Reaching, Rig, Setup, Shell,
+    field, heard, Driving, ExitStatus, Failure, Layout, Message, Reached, Reaching, Rig, Setup, Shell,
 };
 
 use crate::support::{bash, Scripts};
 
-struct Keeping {
-    reaching: Reaching,
-}
+struct Keeping;
 
 impl Rig for Keeping {
     type Reaction = Vec<Message>;
@@ -29,14 +26,6 @@ impl Rig for Keeping {
 
     async fn joined(&self, _at: &Layout, _shell: Arc<Shell>) -> Result<Vec<Message>, Failure> {
         Ok(Vec::new())
-    }
-}
-
-impl Driving for Keeping {
-    /// The run exports the address as `BC_SESSION` either way; this is what
-    /// else the subject's environment gets.
-    fn environment(&self, at: &Layout) -> Vec<(OsString, OsString)> {
-        self.reaching.environment(at)
     }
 }
 
@@ -83,7 +72,7 @@ async fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
             "#,
     )]);
 
-    let keeping = Keeping { reaching: Reaching::BashEnv };
+    let keeping = Reached { rig: Keeping, reaching: Reaching::BashEnv };
     let ran = keeping.run(&bash(scripts.at("collect.bash"))).await.unwrap().whole().unwrap();
 
     assert_eq!(ran.subject, ExitStatus::Code(0));
@@ -125,7 +114,7 @@ async fn a_script_joins_where_it_chooses_and_is_heard_from_there() {
             "#,
     )]);
 
-    let keeping = Keeping { reaching: Reaching::ByHand };
+    let keeping = Reached { rig: Keeping, reaching: Reaching::ByHand };
     let ran = keeping.run(&bash(scripts.at("collect.bash"))).await.unwrap().whole().unwrap();
 
     assert_eq!(ran.subject, ExitStatus::Code(0));

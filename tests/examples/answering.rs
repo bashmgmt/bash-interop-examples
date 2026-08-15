@@ -8,12 +8,11 @@
 //! that shell's own — and where an answer's bash goes is the session's own
 //! workspace, which every reaction is handed at construction.
 
-use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    field, Answer, Driving, ExitStatus, Failure, Layout, Message, Reaching, Reacting, Rig, Setup,
+    field, Answer, Driving, ExitStatus, Failure, Layout, Message, Reached, Reaching, Reacting, Rig, Setup,
     Shell,
 };
 
@@ -120,12 +119,6 @@ impl Reacting for Conversation {
     }
 }
 
-impl Driving for Choosing {
-    fn environment(&self, at: &Layout) -> Vec<(OsString, OsString)> {
-        Reaching::BashEnv.environment(at)
-    }
-}
-
 #[tokio::test]
 async fn each_turn_is_computed_from_what_the_other_side_said() {
     let scripts = Scripts::of(&[(
@@ -139,7 +132,8 @@ async fn each_turn_is_computed_from_what_the_other_side_said() {
         "#,
     )]);
 
-    let ran = Choosing.run(&bash(scripts.at("session.bash"))).await.unwrap().whole().unwrap();
+    let choosing = Reached { rig: Choosing, reaching: Reaching::BashEnv };
+    let ran = choosing.run(&bash(scripts.at("session.bash"))).await.unwrap().whole().unwrap();
 
     let marks: Vec<&[String]> =
         ran.shells[0].kept.iter().filter_map(|message| message.behind("MARK")).collect();
