@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    field, heard, Driving, ExitStatus, Failure, Layout, Message, Reached, Reaching, Rig, Setup, Shell,
+    field, heard, Driving, ExitStatus, Failure, Layout, Message, Reached, Reaching, Rig, Shell,
 };
 
 use crate::support::{bash, Scripts};
@@ -19,9 +19,9 @@ struct Keeping;
 impl Rig for Keeping {
     type Reaction = Vec<Message>;
 
-    /// The label alone: `BC_INSTR KEEP …` is what the script says.
-    fn setup(&self) -> Setup {
-        Setup { label: "KEEP".to_string(), bash: String::new() }
+    /// The join alone: `BC_INSTR KEEP …` is what the script says.
+    fn bash(&self) -> String {
+        "BC_JOIN KEEP \"$1\"\n".to_string()
     }
 
     async fn joined(&self, _at: &Layout, _shell: Arc<Shell>) -> Result<Vec<Message>, Failure> {

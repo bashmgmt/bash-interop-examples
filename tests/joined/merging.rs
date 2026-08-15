@@ -29,7 +29,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    Answer, Failure, Layout, Message, Reacting, Rig, Serving, Setup, Shell,
+    Answer, Failure, Layout, Message, Reacting, Rig, Serving, Shell,
 };
 use mb_resolver::bash::value::emit_array;
 
@@ -42,6 +42,7 @@ __merge_into() {
     shift
     __merge_target=("$@")
 }
+BC_JOIN MERGE "$1"
 "#;
 
 /// Everything the shells have said. The client's array is a projection of this
@@ -67,8 +68,8 @@ struct Merges {
 impl Rig for Merging {
     type Reaction = Merges;
 
-    fn setup(&self) -> Setup {
-        Setup { label: "MERGE".to_string(), bash: MERGE_INTO.to_string() }
+    fn bash(&self) -> String {
+        MERGE_INTO.to_string()
     }
 
     async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Merges, Failure> {

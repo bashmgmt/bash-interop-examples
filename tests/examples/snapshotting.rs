@@ -12,10 +12,10 @@
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reached, Reaching, Reacting, Rig, Setup,
+    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reached, Reaching, Reacting, Rig,
     Shell,
 };
-use mb_resolver::bashcap::{instrument, Capture, Tracing, LABEL};
+use mb_resolver::bashcap::{instrument, Capture, Tracing};
 
 use crate::fixture;
 use crate::support::bash;
@@ -38,8 +38,8 @@ impl Rig for Snapshots {
     /// `ERR`, `DEBUG` and `RETURN` traps inherited by functions and
     /// subshells, so a subject with traps of its own behaves differently
     /// under it. That is why it is asked for rather than assumed.
-    fn setup(&self) -> Setup {
-        Setup { label: LABEL.to_string(), bash: instrument(Tracing::Calls) }
+    fn bash(&self) -> String {
+        instrument(Tracing::Calls)
     }
 
     async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Seen, Failure> {

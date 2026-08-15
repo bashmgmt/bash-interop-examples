@@ -18,7 +18,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reached, Reaching, Reacting, Rig, Setup,
+    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reached, Reaching, Reacting, Rig,
     Shell,
 };
 
@@ -53,8 +53,8 @@ impl Rig for Logging {
     type Reaction = Writing;
 
     /// No words of its own in the subject's shells: only the label.
-    fn setup(&self) -> Setup {
-        Setup { label: "LOG".to_string(), bash: String::new() }
+    fn bash(&self) -> String {
+        "BC_JOIN LOG \"$1\"\n".to_string()
     }
 
     async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Writing, Failure> {

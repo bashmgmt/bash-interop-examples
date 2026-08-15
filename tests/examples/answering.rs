@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    field, Answer, Driving, ExitStatus, Failure, Layout, Message, Reached, Reaching, Reacting, Rig, Setup,
+    field, Answer, Driving, ExitStatus, Failure, Layout, Message, Reached, Reaching, Reacting, Rig,
     Shell,
 };
 
@@ -26,6 +26,7 @@ REFUSE() {
     printf 'operator: %s\n' "$1" >&2
     return "$2"
 }
+BC_JOIN CHOOSE "$1"
 "#;
 
 struct Choosing;
@@ -70,8 +71,8 @@ fn candidate(message: &Message) -> Option<Candidate> {
 impl Rig for Choosing {
     type Reaction = Conversation;
 
-    fn setup(&self) -> Setup {
-        Setup { label: "CHOOSE".to_string(), bash: OPERATOR_BASH.to_string() }
+    fn bash(&self) -> String {
+        OPERATOR_BASH.to_string()
     }
 
     async fn joined(&self, at: &Layout, shell: Arc<Shell>) -> Result<Conversation, Failure> {
