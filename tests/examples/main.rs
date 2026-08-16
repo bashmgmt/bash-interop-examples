@@ -54,16 +54,6 @@ mod support {
     }
 }
 
-/// The vendored client half `__fixtures/` scripts source — same bytes as the
-/// core's, so the copies cannot drift.
-#[test]
-fn the_vendored_joining_is_the_cores_own() {
-    assert_eq!(
-        include_str!("../../__fixtures/vendor/joining.bash"),
-        bash_interop::rig::JOINING_BASH
-    );
-}
-
 /// A script under `__fixtures/`, by path from the crate root.
 pub fn fixture(relative: impl AsRef<std::path::Path>) -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("__fixtures").join(relative)

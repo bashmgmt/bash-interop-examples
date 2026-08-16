@@ -3,22 +3,21 @@
 #
 #     merging.bash <the server's command line…>
 #
-# Everything here is what a shipped client writes. `BC_START` starts the
-# server and reads nothing back; the script probes the workspace it named
-# until the session is up, loads the laid definitions and initiates its own
-# channel — from then on `BC_INSTR` speaks, in this shell and in every
-# subshell it makes.
+# Everything here is what a shipped client writes, and nothing is vendored:
+# the coproc starts the server and reads nothing back; the script probes the
+# workspace it named until the session is up, sources the laid definitions
+# and initiates its own channel — from then on `BC_INSTR` speaks, in this
+# shell and in every subshell it makes.
 set -euo pipefail
-
-source "${BASH_SOURCE[0]%/*}/vendor/joining.bash"
 
 # The array is this script's, and so is its name. The server is told which one
 # to write into, on the command line the client builds.
 declare -a heard=()
 declare -- workspace="$(mktemp -d)"
-BC_START "$@" serve --at "$workspace" --into heard
-until BC_UP "$workspace"; do sleep 0.01; done
-BC_LOAD "$workspace"
+coproc SERVER { "$@" serve --at "$workspace" --into heard; }
+until [[ -p "$workspace/join" ]]; do sleep 0.01; done
+source "$workspace/prelude.bash"
+source "$workspace/rig.bash"
 BC_JOIN MERGE "$workspace"
 
 # Each entry is `<shell> <µs into the session> <µs in flight> <words>`, and the
@@ -53,8 +52,11 @@ report
 # Saying no is a command that returns non-zero, like any other answer.
 BC_INSTR MERGE ask MERGE nonsense || echo "unknown question: $?"
 
-# The session is this script's to end: let go, and wait for what it started.
-# The workspace was this script's to name, so it is this script's to remove.
-BC_LEAVE
+# The session is this script's to end: let go of the handle coproc left it,
+# and wait for what it started. The workspace was this script's to name, so
+# it is this script's to remove.
+declare -- handle="${SERVER[1]}"
+exec {handle}>&-
+wait "$SERVER_PID"
 echo "server exited $?"
 rm -rf "$workspace"
