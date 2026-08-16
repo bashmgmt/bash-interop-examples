@@ -38,8 +38,8 @@ impl Rig for Snapshots {
     /// `ERR`, `DEBUG` and `RETURN` traps inherited by functions and
     /// subshells, so a subject with traps of its own behaves differently
     /// under it. That is why it is asked for rather than assumed.
-    fn bash(&self) -> String {
-        instrument(Tracing::Calls)
+    fn bash(&self, at: &Layout) -> String {
+        instrument(at, Tracing::Calls)
     }
 
     async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Seen, Failure> {
@@ -82,7 +82,7 @@ async fn a_tools_instrument_is_reusable_without_its_command_line() {
 
     let ran =
         Snapshots
-            .run(&bash(fixture("snapshotting/demo.bash")), |at| vec![at.bc_session(), at.bash_env()])
+            .run(&bash(fixture("snapshotting/demo.bash")), |at| vec![at.bash_env()])
             .await
             .unwrap()
             .whole()

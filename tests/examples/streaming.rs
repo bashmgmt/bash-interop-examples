@@ -52,9 +52,10 @@ struct Writing {
 impl Rig for Logging {
     type Reaction = Writing;
 
-    /// No words of its own in the subject's shells: only the join.
-    fn bash(&self) -> String {
-        "BC_JOIN LOG \"$1\"\n".to_string()
+    /// No words of its own in the subject's shells: only the join, the
+    /// workspace baked in.
+    fn bash(&self, at: &Layout) -> String {
+        format!("BC_JOIN LOG {}\n", bash_strings::emit_scalar(at.text()))
     }
 
     async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Writing, Failure> {
@@ -105,7 +106,7 @@ async fn a_session_may_hold_a_resource_and_keep_no_messages() {
 
     let ran = Logging::writing(into.clone())
         .unwrap()
-        .run(&bash(scripts.at("main.bash")), |at| vec![at.bc_session(), at.bash_env()])
+        .run(&bash(scripts.at("main.bash")), |at| vec![at.bash_env()])
         .await
         .unwrap()
         .whole()

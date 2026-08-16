@@ -20,8 +20,8 @@ impl Rig for Keeping {
     type Reaction = Vec<Message>;
 
     /// The join alone: `BC_INSTR KEEP …` is what the script says.
-    fn bash(&self) -> String {
-        "BC_JOIN KEEP \"$1\"\n".to_string()
+    fn bash(&self, at: &Layout) -> String {
+        format!("BC_JOIN KEEP {}\n", bash_strings::emit_scalar(at.text()))
     }
 
     async fn joined(&self, _at: &Layout, _shell: Arc<Shell>) -> Result<Vec<Message>, Failure> {
@@ -75,7 +75,7 @@ async fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
     )]);
 
     let ran = Keeping
-        .run(&bash(scripts.at("collect.bash")), |at| vec![at.bc_session(), at.bash_env()])
+        .run(&bash(scripts.at("collect.bash")), |at| vec![at.bash_env()])
         .await
         .unwrap()
         .whole()
@@ -105,8 +105,8 @@ async fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
     );
 }
 
-/// Reached by hand: the environment carries the address and nothing else, and
-/// the script joins where it says so. What it said before that went nowhere,
+/// Reached by hand: the environment carries the workspace and nothing else,
+/// and the script joins where it says so. What it said before that went nowhere,
 /// and a shell it started that never joined is not a shell of the run.
 #[tokio::test]
 async fn a_script_joins_where_it_chooses_and_is_heard_from_there() {
@@ -115,13 +115,13 @@ async fn a_script_joins_where_it_chooses_and_is_heard_from_there() {
         r#"
             bash -c 'exit 0'                        # a shell of the subject's, not of the run's
 
-            source "$BC_SESSION"
+            source "$BC_SESSION/session.bash"
             BC_INSTR KEEP say STEP name joined seen 1
             "#,
     )]);
 
     let ran = Keeping
-        .run(&bash(scripts.at("collect.bash")), |at| vec![at.bc_session()])
+        .run(&bash(scripts.at("collect.bash")), |at| vec![crate::support::bc_session(at)])
         .await
         .unwrap()
         .whole()

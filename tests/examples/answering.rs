@@ -18,16 +18,21 @@ use bash_interop::rig::{
 
 use crate::support::{bash, sourcing, Scripts};
 
-const OPERATOR_BASH: &str = r#"
-MARK() {
+fn operator_bash(at: &Layout) -> String {
+    format!(
+        r#"
+MARK() {{
     BC_INSTR CHOOSE say MARK "$@";
-}
-REFUSE() {
+}}
+REFUSE() {{
     printf 'operator: %s\n' "$1" >&2
     return "$2"
+}}
+BC_JOIN CHOOSE {dir}
+"#,
+        dir = bash_strings::emit_scalar(at.text()),
+    )
 }
-BC_JOIN CHOOSE "$1"
-"#;
 
 struct Choosing;
 
@@ -71,12 +76,12 @@ fn candidate(message: &Message) -> Option<Candidate> {
 impl Rig for Choosing {
     type Reaction = Conversation;
 
-    fn bash(&self) -> String {
-        OPERATOR_BASH.to_string()
+    fn bash(&self, at: &Layout) -> String {
+        operator_bash(at)
     }
 
     async fn joined(&self, at: &Layout, shell: Arc<Shell>) -> Result<Conversation, Failure> {
-        Ok(Conversation { shell, dir: at.dir.clone(), heard: Vec::new(), asked: 0 })
+        Ok(Conversation { shell, dir: at.path().to_path_buf(), heard: Vec::new(), asked: 0 })
     }
 }
 
@@ -125,7 +130,7 @@ impl Driving for Choosing {}
 #[tokio::test]
 async fn each_turn_is_computed_from_what_the_other_side_said() {
     let scripts = Scripts::of(&[(
-        "session.bash",
+        "subject.bash",
         r#"
         BC_INSTR CHOOSE ask phase survey
         BC_INSTR CHOOSE ask phase choose
@@ -136,7 +141,7 @@ async fn each_turn_is_computed_from_what_the_other_side_said() {
     )]);
 
     let ran = Choosing
-        .run(&bash(scripts.at("session.bash")), |at| vec![at.bc_session(), at.bash_env()])
+        .run(&bash(scripts.at("subject.bash")), |at| vec![at.bash_env()])
         .await
         .unwrap()
         .whole()

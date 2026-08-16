@@ -42,14 +42,19 @@ fn logging() {
 /// The word the rig's own answers call. A nameref is how bash lets a callee
 /// write into a variable the caller named, which is what makes the target a
 /// runtime choice rather than a compiled-in one.
-const MERGE_INTO: &str = r#"
-__merge_into() {
+fn merge_into(at: &Layout) -> String {
+    format!(
+        r#"
+__merge_into() {{
     local -n __merge_target="$1"
     shift
     __merge_target=("$@")
+}}
+BC_JOIN MERGE {dir}
+"#,
+        dir = bash_strings::emit_scalar(at.text()),
+    )
 }
-BC_JOIN MERGE "$1"
-"#;
 
 /// Everything the shells have said. The client's array is a projection of this
 /// and never a second copy of it — which is why nothing here counts what has
@@ -74,8 +79,8 @@ struct Merges {
 impl Rig for Merging {
     type Reaction = Merges;
 
-    fn bash(&self) -> String {
-        MERGE_INTO.to_string()
+    fn bash(&self, at: &Layout) -> String {
+        merge_into(at)
     }
 
     async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Merges, Failure> {
@@ -157,8 +162,8 @@ fn arguments(argv: &mut impl Iterator<Item = String>) -> (PathBuf, String) {
     }
 }
 
-/// The server the fixture starts. It holds our standard input and reads the
-/// address from our standard output; `BC_START` is the word that does both.
+/// The server the fixture starts. It holds our standard input; nothing is
+/// written back — the fixture probes the workspace it named and attaches.
 async fn serve(at: PathBuf, into: String) {
     let merging = Merging { into, heard: Rc::new(RefCell::new(Vec::new())) };
     let served = merging.serve_coprocess(&at).await.expect("the session");

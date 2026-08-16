@@ -3,8 +3,9 @@
 #
 #     merging.bash <the server's command line…>
 #
-# Everything here is what a shipped client writes. `BC_START` starts the server,
-# takes the one command it prints, and runs it — from then on `BC_INSTR` is
+# Everything here is what a shipped client writes. `BC_START` starts the
+# server and reads nothing back; the script probes the workspace it named
+# until the session is up and attaches by it — from then on `BC_INSTR` is
 # defined, in this shell and in every subshell it makes.
 set -euo pipefail
 
@@ -15,6 +16,8 @@ source "${BASH_SOURCE[0]%/*}/vendor/joining.bash"
 declare -a heard=()
 __workspace="$(mktemp -d)"
 BC_START "$@" serve --at "$__workspace" --into heard
+until BC_UP "$__workspace"; do sleep 0.01; done
+BC_ATTACH "$__workspace"
 
 # Each entry is `<shell> <µs into the session> <µs in flight> <words>`, and the
 # words are a bash array literal — one level to unpack, and the boundaries the
