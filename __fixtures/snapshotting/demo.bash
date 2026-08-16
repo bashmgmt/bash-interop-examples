@@ -1,34 +1,18 @@
 #!/usr/bin/env bash
-# Everything bashcap captures, in one script. No test asserts these line
-# numbers — edit freely.
+# The subject the snapshotting example drives. The test reads none of its
+# line numbers, names or counts — edit freely.
+#
+# Driven, the injected instrument defines BASHCAP before this file runs;
+# standalone, the guard makes the word a no-op.
+declare -F BASHCAP >/dev/null || BASHCAP() { :; }
 
-source "$(dirname "${BASH_SOURCE[0]}")/bashcap.bash"
-declare -F __bc_capture >/dev/null || __bc_capture() { :; }
+declare -a stages=(configure pack publish)
 
-declare -- greeting="hello world"
-declare -a items=(alpha "beta gamma")
-declare -A conf=([host]=localhost [port]=8080)
-declare -i attempts=3
+configure() { BASHCAP -BCV:stages -BCS:"configuring $1"; }
+configure "the demo target"
 
-# Every BASHCAP__CTX__* variable joins every later snapshot.
-BASHCAP__CTX__phase=setup
-
-[[ "build-2026-08" =~ ^([a-z]+)-([0-9]{4})-([0-9]{2})$ ]]
-
-outer() { inner "first arg" "second arg"; }
-inner() {
-    BASHCAP -BCV:greeting -BCV:items -BCV:conf -BCV:attempts -BCV:nonexistent \
-            -BCS:"two frames deep, four typed variables, one missing"
-}
-outer
-
-# The CPS form: snapshot, then run the continuation and return its status.
-step() { echo "   [continuation ran with: $*]"; }
-BASHCAP__CTX__phase=work
-WITH_BASHCAP -BCV:conf -BCS:"about to run step" step one two
-
-# A subshell is its own shell on the wire, with its own provenance.
-( BASHCAP -BCS:"from inside a subshell" )
+# A subshell is a shell of its own on the wire.
+( BASHCAP -BCS:"packing, one level down" )
 
 # So is a child process.
 bash "$(dirname "${BASH_SOURCE[0]}")/child.bash"

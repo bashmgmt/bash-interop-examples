@@ -8,10 +8,10 @@ publish = false
 [dependencies]
 
 [dev-dependencies]
-bash-interop = "0.1"
-bash-strings = "0.1"
-bashcap = "0.1"
-bashprof = "0.1"
+bash-interop = "*"
+bash-strings = "*"
+bashcap = "*"
+bashprof = "*"
 tokio = { version = "1.53", features = ["rt", "macros"] }
 serde_json = "1"
 log = "0.4"
