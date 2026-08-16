@@ -21,7 +21,12 @@ impl Rig for Keeping {
 
     /// The join alone: `BC_INSTR KEEP …` is what the script says.
     fn bash(&self, at: &Layout) -> String {
-        format!("BC_JOIN KEEP {}\n", bash_strings::emit_scalar(at.text()))
+        let dir = bash_strings::emit_scalar(at.text());
+        format!(
+            r#"
+            BC_JOIN KEEP {dir}
+            "#
+        )
     }
 
     async fn joined(&self, _at: &Layout, _shell: Arc<Shell>) -> Result<Vec<Message>, Failure> {

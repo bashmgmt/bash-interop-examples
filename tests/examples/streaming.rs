@@ -55,7 +55,12 @@ impl Rig for Logging {
     /// No words of its own in the subject's shells: only the join, the
     /// workspace baked in.
     fn bash(&self, at: &Layout) -> String {
-        format!("BC_JOIN LOG {}\n", bash_strings::emit_scalar(at.text()))
+        let dir = bash_strings::emit_scalar(at.text());
+        format!(
+            r#"
+            BC_JOIN LOG {dir}
+            "#
+        )
     }
 
     async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Writing, Failure> {

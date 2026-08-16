@@ -75,7 +75,8 @@ async fn a_run_is_read_as_a_tree_and_then_as_measurements() {
 async fn a_run_that_died_mid_call_still_measured_what_completed() {
     let scripts = Scripts::of(&[(
         "build.bash",
-        r#"set -e
+        r#"
+        set -e
         ok()     { :; }
         broken() { false; }
 

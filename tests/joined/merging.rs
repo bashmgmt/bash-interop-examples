@@ -43,16 +43,16 @@ fn logging() {
 /// write into a variable the caller named, which is what makes the target a
 /// runtime choice rather than a compiled-in one.
 fn merge_into(at: &Layout) -> String {
+    let dir = bash_strings::emit_scalar(at.text());
     format!(
         r#"
-__merge_into() {{
-    local -n __merge_target="$1"
-    shift
-    __merge_target=("$@")
-}}
-BC_JOIN MERGE {dir}
-"#,
-        dir = bash_strings::emit_scalar(at.text()),
+        __merge_into() {{
+            local -n __merge_target="$1"
+            shift
+            __merge_target=("$@")
+        }}
+        BC_JOIN MERGE {dir}
+        "#
     )
 }
 

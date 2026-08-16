@@ -19,18 +19,18 @@ use bash_interop::rig::{
 use crate::support::{bash, sourcing, Scripts};
 
 fn operator_bash(at: &Layout) -> String {
+    let dir = bash_strings::emit_scalar(at.text());
     format!(
         r#"
-MARK() {{
-    BC_INSTR CHOOSE say MARK "$@";
-}}
-REFUSE() {{
-    printf 'operator: %s\n' "$1" >&2
-    return "$2"
-}}
-BC_JOIN CHOOSE {dir}
-"#,
-        dir = bash_strings::emit_scalar(at.text()),
+        MARK() {{
+            BC_INSTR CHOOSE say MARK "$@";
+        }}
+        REFUSE() {{
+            printf 'operator: %s\n' "$1" >&2
+            return "$2"
+        }}
+        BC_JOIN CHOOSE {dir}
+        "#
     )
 }
 
