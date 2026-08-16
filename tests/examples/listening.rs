@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use bash_interop::rig::{
-    field, heard, Driving, ExitStatus, Failure, Layout, Message, Rig, Shell,
+    field, heard, Driving, ExitStatus, Failure, Layout, Message, Provision, Rig, Shell,
 };
 
 use crate::support::{bash, Scripts};
@@ -19,14 +19,13 @@ struct Keeping;
 impl Rig for Keeping {
     type Reaction = Vec<Message>;
 
-    /// The join alone: `BC_INSTR KEEP …` is what the script says.
-    fn bash(&self, at: &Layout) -> String {
-        let dir = bash_strings::emit_scalar(at.text());
-        format!(
-            r#"
-            BC_JOIN KEEP {dir}
-            "#
-        )
+    /// No words of its own: `BC_INSTR KEEP …` is what the script says.
+    fn bash(&self, _at: &Layout) -> String {
+        String::new()
+    }
+
+    fn joining(&self, at: &Layout) -> String {
+        format!("BC_JOIN KEEP {}\n", bash_strings::emit_scalar(at.text()))
     }
 
     async fn joined(&self, _at: &Layout, _shell: Arc<Shell>) -> Result<Vec<Message>, Failure> {
@@ -80,7 +79,9 @@ async fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
     )]);
 
     let ran = Keeping
-        .run(&bash(scripts.at("collect.bash")), |at| vec![at.bash_env()])
+        .run(&bash(scripts.at("collect.bash")), |at| {
+            Ok(vec![at.bash_env(Provision::Joining(&Keeping.joining(at)))?])
+        })
         .await
         .unwrap()
         .whole()
@@ -110,23 +111,28 @@ async fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
     );
 }
 
-/// Reached by hand: the environment carries the workspace and nothing else,
-/// and the script joins where it says so. What it said before that went nowhere,
-/// and a shell it started that never joined is not a shell of the run.
+/// Reached by hand: the environment carries the workspace and nothing
+/// else — not even definitions — and the script loads the pieces and
+/// initiates where it says so. A shell it started that never joined is not
+/// a shell of the run.
 #[tokio::test]
 async fn a_script_joins_where_it_chooses_and_is_heard_from_there() {
     let scripts = Scripts::of(&[(
         "collect.bash",
         r#"
+            declare -- workspace="${BC_SESSION:?the workspace, from the run closure}"
+
             bash -c 'exit 0'                        # a shell of the subject's, not of the run's
 
-            source "$BC_SESSION/session.bash"
+            source "$workspace/prelude.bash"
+            source "$workspace/rig.bash"
+            BC_JOIN KEEP "$workspace"
             BC_INSTR KEEP say STEP name joined seen 1
             "#,
     )]);
 
     let ran = Keeping
-        .run(&bash(scripts.at("collect.bash")), |at| vec![crate::support::bc_session(at)])
+        .run(&bash(scripts.at("collect.bash")), |at| Ok(vec![crate::support::bc_session(at)]))
         .await
         .unwrap()
         .whole()

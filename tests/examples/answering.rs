@@ -12,27 +12,21 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use bash_interop::rig::{
-    field, Answer, Driving, ExitStatus, Failure, Layout, Message, Reacting, Rig,
+    field, Answer, Driving, ExitStatus, Failure, Layout, Message, Provision, Reacting, Rig,
     Shell,
 };
 
 use crate::support::{bash, sourcing, Scripts};
 
-fn operator_bash(at: &Layout) -> String {
-    let dir = bash_strings::emit_scalar(at.text());
-    format!(
-        r#"
-        MARK() {{
-            BC_INSTR CHOOSE say MARK "$@";
-        }}
-        REFUSE() {{
-            printf 'operator: %s\n' "$1" >&2
-            return "$2"
-        }}
-        BC_JOIN CHOOSE {dir}
-        "#
-    )
+const OPERATOR_BASH: &str = r#"
+MARK() {
+    BC_INSTR CHOOSE say MARK "$@";
 }
+REFUSE() {
+    printf 'operator: %s\n' "${1:?the complaint}" >&2
+    return "${2:?its status}"
+}
+"#;
 
 struct Choosing;
 
@@ -76,8 +70,12 @@ fn candidate(message: &Message) -> Option<Candidate> {
 impl Rig for Choosing {
     type Reaction = Conversation;
 
-    fn bash(&self, at: &Layout) -> String {
-        operator_bash(at)
+    fn bash(&self, _at: &Layout) -> String {
+        OPERATOR_BASH.to_string()
+    }
+
+    fn joining(&self, at: &Layout) -> String {
+        format!("BC_JOIN CHOOSE {}\n", bash_strings::emit_scalar(at.text()))
     }
 
     async fn joined(&self, at: &Layout, shell: Arc<Shell>) -> Result<Conversation, Failure> {
@@ -141,7 +139,9 @@ async fn each_turn_is_computed_from_what_the_other_side_said() {
     )]);
 
     let ran = Choosing
-        .run(&bash(scripts.at("subject.bash")), |at| vec![at.bash_env()])
+        .run(&bash(scripts.at("subject.bash")), |at| {
+            Ok(vec![at.bash_env(Provision::Joining(&Choosing.joining(at)))?])
+        })
         .await
         .unwrap()
         .whole()

@@ -18,7 +18,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use bash_interop::rig::{
-    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reacting, Rig,
+    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Provision, Reacting, Rig,
     Shell,
 };
 
@@ -52,15 +52,13 @@ struct Writing {
 impl Rig for Logging {
     type Reaction = Writing;
 
-    /// No words of its own in the subject's shells: only the join, the
-    /// workspace baked in.
-    fn bash(&self, at: &Layout) -> String {
-        let dir = bash_strings::emit_scalar(at.text());
-        format!(
-            r#"
-            BC_JOIN LOG {dir}
-            "#
-        )
+    /// No words of its own in the subject's shells.
+    fn bash(&self, _at: &Layout) -> String {
+        String::new()
+    }
+
+    fn joining(&self, at: &Layout) -> String {
+        format!("BC_JOIN LOG {}\n", bash_strings::emit_scalar(at.text()))
     }
 
     async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Writing, Failure> {
@@ -109,9 +107,11 @@ async fn a_session_may_hold_a_resource_and_keep_no_messages() {
     )]);
     let into = scripts.at("said.log");
 
-    let ran = Logging::writing(into.clone())
-        .unwrap()
-        .run(&bash(scripts.at("main.bash")), |at| vec![at.bash_env()])
+    let logging = Logging::writing(into.clone()).unwrap();
+    let ran = logging
+        .run(&bash(scripts.at("main.bash")), |at| {
+            Ok(vec![at.bash_env(Provision::Joining(&logging.joining(at)))?])
+        })
         .await
         .unwrap()
         .whole()

@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use bash_interop::rig::{
-    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reacting, Rig,
+    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Provision, Reacting, Rig,
     Shell,
 };
 use bashcap::{instrument, Capture, Tracing};
@@ -38,8 +38,12 @@ impl Rig for Snapshots {
     /// `ERR`, `DEBUG` and `RETURN` traps inherited by functions and
     /// subshells, so a subject with traps of its own behaves differently
     /// under it. That is why it is asked for rather than assumed.
-    fn bash(&self, at: &Layout) -> String {
-        instrument(at, Tracing::Calls)
+    fn bash(&self, _at: &Layout) -> String {
+        instrument(Tracing::Calls)
+    }
+
+    fn joining(&self, at: &Layout) -> String {
+        bashcap::joining(at)
     }
 
     async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Seen, Failure> {
@@ -82,7 +86,9 @@ async fn a_tools_instrument_is_reusable_without_its_command_line() {
 
     let ran =
         Snapshots
-            .run(&bash(fixture("snapshotting/demo.bash")), |at| vec![at.bash_env()])
+            .run(&bash(fixture("snapshotting/demo.bash")), |at| {
+                Ok(vec![at.bash_env(Provision::Joining(&Snapshots.joining(at)))?])
+            })
             .await
             .unwrap()
             .whole()

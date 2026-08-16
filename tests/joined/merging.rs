@@ -42,19 +42,13 @@ fn logging() {
 /// The word the rig's own answers call. A nameref is how bash lets a callee
 /// write into a variable the caller named, which is what makes the target a
 /// runtime choice rather than a compiled-in one.
-fn merge_into(at: &Layout) -> String {
-    let dir = bash_strings::emit_scalar(at.text());
-    format!(
-        r#"
-        __merge_into() {{
-            local -n __merge_target="$1"
-            shift
-            __merge_target=("$@")
-        }}
-        BC_JOIN MERGE {dir}
-        "#
-    )
+const MERGE_INTO: &str = r#"
+__merge_into() {
+    local -n __merge_target="${1:?the array to write}"
+    shift
+    __merge_target=("$@")
 }
+"#;
 
 /// Everything the shells have said. The client's array is a projection of this
 /// and never a second copy of it — which is why nothing here counts what has
@@ -79,8 +73,12 @@ struct Merges {
 impl Rig for Merging {
     type Reaction = Merges;
 
-    fn bash(&self, at: &Layout) -> String {
-        merge_into(at)
+    fn bash(&self, _at: &Layout) -> String {
+        MERGE_INTO.to_string()
+    }
+
+    fn joining(&self, at: &Layout) -> String {
+        format!("BC_JOIN MERGE {}\n", bash_strings::emit_scalar(at.text()))
     }
 
     async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Merges, Failure> {

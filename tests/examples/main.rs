@@ -38,7 +38,7 @@ mod support {
 
     /// The tools' convention for the by-hand reach: the workspace directory
     /// as `BC_SESSION` — a client's spelling, consulted by nothing in the
-    /// core. Scripts join with `source "$BC_SESSION/session.bash"`.
+    /// core. Scripts load the pieces and initiate by it.
     #[allow(dead_code)] // each example uses its own subset
     pub fn bc_session(at: &Layout) -> (OsString, OsString) {
         (OsString::from("BC_SESSION"), OsString::from(at.text()))
