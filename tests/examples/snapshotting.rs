@@ -18,7 +18,7 @@ use mb_resolver::bash::rig::{
 use mb_resolver::bashcap::{instrument, Capture, Tracing};
 
 use crate::fixture;
-use crate::support::bash;
+use crate::support::{bash, logging};
 
 struct Snapshots;
 
@@ -78,6 +78,8 @@ impl Driving for Snapshots {}
 
 #[tokio::test]
 async fn a_tools_instrument_is_reusable_without_its_command_line() {
+    logging();
+
     let ran =
         Snapshots
             .run(&bash(fixture("bashcap_demo/demo.bash")), |at| vec![at.bc_session(), at.bash_env()])
@@ -89,7 +91,7 @@ async fn a_tools_instrument_is_reusable_without_its_command_line() {
 
     let seen: Vec<&Capture> = ran.shells.iter().flat_map(|at| &at.kept).collect();
     for (at, capture) in seen.iter().enumerate() {
-        println!("[{at}] {capture}");
+        log::info!("[{at}] {capture}");
     }
 
     // The fixture is meant to be edited: what follows holds for any script

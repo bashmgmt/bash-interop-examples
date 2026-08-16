@@ -33,6 +33,10 @@ use mb_resolver::bash::rig::{
 };
 use mb_resolver::bash::value::emit_array;
 
+#[path = "../support/mod.rs"]
+#[allow(dead_code)]
+mod support;
+
 /// The word the rig's own answers call. A nameref is how bash lets a callee
 /// write into a variable the caller named, which is what makes the target a
 /// runtime choice rather than a compiled-in one.
@@ -130,6 +134,8 @@ fn entry(shell: &Shell, message: &Message, first: &Message) -> String {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
+    support::logging();
+
     let mut argv = std::env::args().skip(1);
 
     match argv.next().as_deref() {
@@ -167,9 +173,9 @@ fn demonstrate() {
 
     let ran = Command::new("bash").arg(fixture).arg(&me).output().expect("bash");
 
-    // The entries as they were written, timestamps and all. They are on stderr
+    // The entries as they were written, timestamps and all. They are logged
     // because the offsets are real measurements and nothing can assert them.
-    eprint!("{}", String::from_utf8(ran.stderr).expect("the script's own stderr"));
+    log::info!("{}", String::from_utf8(ran.stderr).expect("the script's own stderr"));
 
     let said = String::from_utf8(ran.stdout).expect("the script's own stdout");
     assert_eq!(
@@ -191,5 +197,5 @@ server exited 0
     );
     assert_eq!(ran.status.code(), Some(0));
 
-    println!("merging: two shells, one merged view, written where the client asked");
+    log::info!("merging: two shells, one merged view, written where the client asked");
 }

@@ -9,7 +9,7 @@
 use mb_resolver::bash::rig::{heard, Driving, ExitStatus};
 use mb_resolver::bashprof::{recorded, BashProf, Profile};
 
-use crate::support::{bash, Scripts};
+use crate::support::{bash, logging, Scripts};
 
 /// A build that calls two steps, one of which calls a third. Every `sleep` is
 /// work that belongs to the call it sits in.
@@ -28,6 +28,9 @@ const BUILD: &str = r#"
 
 #[tokio::test]
 async fn a_run_is_read_as_a_tree_and_then_as_measurements() {
+    logging();
+
+    log::info!("the build script:\n{BUILD}");
     let scripts = Scripts::of(&[("build.bash", BUILD)]);
 
     // Step one: run it. Every shell that joined kept what it said.
@@ -39,12 +42,12 @@ async fn a_run_is_read_as_a_tree_and_then_as_measurements() {
     // with the shell that sent it — a walk means nothing without it. Every
     // call that began is in the tree, whether or not it ended.
     let forest = recorded(&heard(&ran.shells)).expect("the instrument's own messages");
-    println!("as recorded:\n{}\n", mb_resolver::bashprof::Recorded::render(&forest));
+    log::info!("as recorded:\n{}", mb_resolver::bashprof::Recorded::render(&forest));
 
     // Step three: read that tree as measurements. This is the step that can
     // refuse — a call the shell died inside has no duration to report.
     let profile = Profile::of(&forest).expect("every call that began also ended");
-    println!("as timings:\n{profile}");
+    log::info!("as timings:\n{profile}");
 
     let build = &profile.roots[0];
     assert_eq!(build.complete.call.label, "build");

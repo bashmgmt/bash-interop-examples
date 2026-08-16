@@ -21,7 +21,8 @@
 //! wants what a shipped tool already does starts that instead: `bashprof
 //! serve`, covered in `tests/cli.rs`.
 //!
-//! `cargo test --test examples -- --nocapture <name>`
+//! `cargo test --test examples -- --nocapture <name>` — narration goes
+//! through the env logger, `info` by default, `RUST_LOG` to filter.
 
 mod answering;
 mod listening;
