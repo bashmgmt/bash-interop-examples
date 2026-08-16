@@ -120,7 +120,7 @@ async fn a_script_joins_where_it_chooses_and_is_heard_from_there() {
     let scripts = Scripts::of(&[(
         "collect.bash",
         r#"
-            declare -- workspace="${BC_SESSION:?the workspace, from the run closure}"
+            declare -- workspace="${LISTENING_SESSION:?the workspace, from the run closure}"
 
             bash -c 'exit 0'                        # a shell of the subject's, not of the run's
 
@@ -132,7 +132,7 @@ async fn a_script_joins_where_it_chooses_and_is_heard_from_there() {
     )]);
 
     let ran = Keeping
-        .run(&bash(scripts.at("collect.bash")), |at| Ok(vec![crate::support::bc_session(at)]))
+        .run(&bash(scripts.at("collect.bash")), |at| Ok(vec![crate::support::listening_session(at)]))
         .await
         .unwrap()
         .whole()

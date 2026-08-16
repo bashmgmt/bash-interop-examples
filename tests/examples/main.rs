@@ -37,11 +37,11 @@ mod support {
     pub use bash_interop::scratch::{bash, sourcing, Scripts};
 
     /// The tools' convention for the by-hand reach: the workspace directory
-    /// as `BC_SESSION` — a client's spelling, consulted by nothing in the
+    /// under a name of the client's own — a spelling, consulted by nothing in the
     /// core. Scripts load the pieces and initiate by it.
     #[allow(dead_code)] // each example uses its own subset
-    pub fn bc_session(at: &Layout) -> (OsString, OsString) {
-        (OsString::from("BC_SESSION"), OsString::from(at.text()))
+    pub fn listening_session(at: &Layout) -> (OsString, OsString) {
+        (OsString::from("LISTENING_SESSION"), OsString::from(at.text()))
     }
 
     /// Test logging: `RUST_LOG` filters, `info` by default, captured per test.
