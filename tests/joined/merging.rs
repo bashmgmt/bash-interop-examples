@@ -28,14 +28,16 @@ use std::process::Command;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use mb_resolver::bash::rig::{
+use bash_interop::rig::{
     Answer, Failure, Layout, Message, Reacting, Rig, Serving, Shell,
 };
-use mb_resolver::bash::value::emit_array;
+use bash_strings::emit_array;
 
-#[path = "../support/mod.rs"]
-#[allow(dead_code)]
-mod support;
+/// `RUST_LOG` filters, `info` by default.
+fn logging() {
+    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .try_init();
+}
 
 /// The word the rig's own answers call. A nameref is how bash lets a callee
 /// write into a variable the caller named, which is what makes the target a
@@ -134,7 +136,7 @@ fn entry(shell: &Shell, message: &Message, first: &Message) -> String {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    support::logging();
+    logging();
 
     let mut argv = std::env::args().skip(1);
 
@@ -168,7 +170,7 @@ async fn serve(at: PathBuf, into: String) {
 /// server it should start. What array that server writes into is the fixture's
 /// decision, made on the command line it builds.
 fn demonstrate() {
-    let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/__fixtures/joined/merging.bash");
+    let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/__fixtures/merging.bash");
     let me = std::env::current_exe().expect("this binary");
 
     let ran = Command::new("bash").arg(fixture).arg(&me).output().expect("bash");

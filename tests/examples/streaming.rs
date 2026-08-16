@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use mb_resolver::bash::rig::{
+use bash_interop::rig::{
     Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reacting, Rig,
     Shell,
 };

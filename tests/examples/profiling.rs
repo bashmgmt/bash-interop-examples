@@ -6,8 +6,8 @@
 //!
 //! `cargo test --test examples -- --nocapture profiling`
 
-use mb_resolver::bash::rig::{heard, Driving, ExitStatus};
-use mb_resolver::bashprof::{recorded, BashProf, Profile};
+use bash_interop::rig::{heard, Driving, ExitStatus};
+use bashprof::{recorded, BashProf, Profile};
 
 use crate::support::{bash, logging, Scripts};
 
@@ -42,7 +42,7 @@ async fn a_run_is_read_as_a_tree_and_then_as_measurements() {
     // with the shell that sent it — a walk means nothing without it. Every
     // call that began is in the tree, whether or not it ended.
     let forest = recorded(&heard(&ran.shells)).expect("the instrument's own messages");
-    log::info!("as recorded:\n{}", mb_resolver::bashprof::Recorded::render(&forest));
+    log::info!("as recorded:\n{}", bashprof::Recorded::render(&forest));
 
     // Step three: read that tree as measurements. This is the step that can
     // refuse — a call the shell died inside has no duration to report.

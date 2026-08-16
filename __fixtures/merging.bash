@@ -8,7 +8,7 @@
 # defined, in this shell and in every subshell it makes.
 set -euo pipefail
 
-source "${BASH_SOURCE[0]%/*}/../../assets/joining.bash"
+source "${BASH_SOURCE[0]%/*}/vendor/joining.bash"
 
 # The array is this script's, and so is its name. The server is told which one
 # to write into, on the command line the client builds.

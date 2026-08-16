@@ -11,11 +11,11 @@
 
 use std::sync::Arc;
 
-use mb_resolver::bash::rig::{
+use bash_interop::rig::{
     Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reacting, Rig,
     Shell,
 };
-use mb_resolver::bashcap::{instrument, Capture, Tracing};
+use bashcap::{instrument, Capture, Tracing};
 
 use crate::fixture;
 use crate::support::{bash, logging};
@@ -82,7 +82,7 @@ async fn a_tools_instrument_is_reusable_without_its_command_line() {
 
     let ran =
         Snapshots
-            .run(&bash(fixture("bashcap_demo/demo.bash")), |at| vec![at.bc_session(), at.bash_env()])
+            .run(&bash(fixture("snapshotting/demo.bash")), |at| vec![at.bc_session(), at.bash_env()])
             .await
             .unwrap()
             .whole()

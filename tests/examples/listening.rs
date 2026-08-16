@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use mb_resolver::bash::rig::{
+use bash_interop::rig::{
     field, heard, Driving, ExitStatus, Failure, Layout, Message, Rig, Shell,
 };
 
