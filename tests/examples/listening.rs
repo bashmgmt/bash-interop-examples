@@ -24,10 +24,6 @@ impl Rig for Keeping {
         String::new()
     }
 
-    fn joining(&self, at: &Layout) -> String {
-        format!("BC_JOIN KEEP {}\n", bash_strings::emit_scalar(at.text()))
-    }
-
     async fn joined(&self, _at: &Layout, _shell: Arc<Shell>) -> Result<Vec<Message>, Failure> {
         Ok(Vec::new())
     }
@@ -143,4 +139,10 @@ async fn a_script_joins_where_it_chooses_and_is_heard_from_there() {
 
     let steps: Vec<Step> = heard(&ran.shells).iter().filter_map(|said| step(said.message)).map(Result::unwrap).collect();
     assert_eq!(steps, [Step { name: "joined".into(), seen: 1 }]);
+}
+
+impl Keeping {
+    fn joining(&self, at: &Layout) -> String {
+        format!("BC_JOIN KEEP {}\n", bash_strings::emit_scalar(at.text()))
+    }
 }

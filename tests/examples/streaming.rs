@@ -57,10 +57,6 @@ impl Rig for Logging {
         String::new()
     }
 
-    fn joining(&self, at: &Layout) -> String {
-        format!("BC_JOIN LOG {}\n", bash_strings::emit_scalar(at.text()))
-    }
-
     async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Writing, Failure> {
         Ok(Writing { shell, into: self.into.clone(), sink: Rc::clone(&self.sink), written: 0 })
     }
@@ -127,4 +123,10 @@ async fn a_session_may_hold_a_resource_and_keep_no_messages() {
     let log = std::fs::read_to_string(&into).unwrap();
     assert_eq!(log.lines().filter(|line| line.contains("REC")).count(), 3);
     assert!(log.contains("from-a-subshell"));
+}
+
+impl Logging {
+    fn joining(&self, at: &Layout) -> String {
+        format!("BC_JOIN LOG {}\n", bash_strings::emit_scalar(at.text()))
+    }
 }

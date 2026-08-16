@@ -74,10 +74,6 @@ impl Rig for Choosing {
         OPERATOR_BASH.to_string()
     }
 
-    fn joining(&self, at: &Layout) -> String {
-        format!("BC_JOIN CHOOSE {}\n", bash_strings::emit_scalar(at.text()))
-    }
-
     async fn joined(&self, at: &Layout, shell: Arc<Shell>) -> Result<Conversation, Failure> {
         Ok(Conversation { shell, dir: at.path().to_path_buf(), heard: Vec::new(), asked: 0 })
     }
@@ -160,4 +156,10 @@ async fn each_turn_is_computed_from_what_the_other_side_said() {
         ExitStatus::Code(2),
         "a refusal is a command, so its status walks out"
     );
+}
+
+impl Choosing {
+    fn joining(&self, at: &Layout) -> String {
+        format!("BC_JOIN CHOOSE {}\n", bash_strings::emit_scalar(at.text()))
+    }
 }

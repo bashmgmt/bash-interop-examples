@@ -42,10 +42,6 @@ impl Rig for Snapshots {
         instrument(Tracing::Calls)
     }
 
-    fn joining(&self, at: &Layout) -> String {
-        bashcap::joining(at)
-    }
-
     async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Seen, Failure> {
         Ok(Seen { shell, captures: Vec::new() })
     }
@@ -87,7 +83,7 @@ async fn a_tools_instrument_is_reusable_without_its_command_line() {
     let ran =
         Snapshots
             .run(&bash(fixture("snapshotting/demo.bash")), |at| {
-                Ok(vec![at.bash_env(Provision::Joining(&Snapshots.joining(at)))?])
+                Ok(vec![at.bash_env(Provision::Joining(&bashcap::joining(at)))?])
             })
             .await
             .unwrap()

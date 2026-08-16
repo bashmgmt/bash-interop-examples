@@ -77,10 +77,6 @@ impl Rig for Merging {
         MERGE_INTO.to_string()
     }
 
-    fn joining(&self, at: &Layout) -> String {
-        format!("BC_JOIN MERGE {}\n", bash_strings::emit_scalar(at.text()))
-    }
-
     async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Merges, Failure> {
         Ok(Merges { shell, into: self.into.clone(), heard: Rc::clone(&self.heard) })
     }
