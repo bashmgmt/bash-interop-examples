@@ -4,12 +4,12 @@
 //! chose, and `behind` is how a decoder claims it. Nor does it contribute a
 //! reaction — `Vec<Message>` is one already, and keeping every message is all
 //! this wants. How its shells find the session is the run's decision, not
-//! the rig's: the two tests below are the two answers, spelled as `Reached`.
+//! the rig's: each test below states it as the run's environment closure.
 
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    field, heard, Driving, ExitStatus, Failure, Layout, Message, Reached, Reaching, Rig, Shell,
+    field, heard, Driving, ExitStatus, Failure, Layout, Message, Rig, Shell,
 };
 
 use crate::support::{bash, Scripts};
@@ -28,6 +28,8 @@ impl Rig for Keeping {
         Ok(Vec::new())
     }
 }
+
+impl Driving for Keeping {}
 
 #[derive(Debug, PartialEq, Eq)]
 struct Step {
@@ -72,8 +74,12 @@ async fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
             "#,
     )]);
 
-    let keeping = Reached { rig: Keeping, reaching: Reaching::BashEnv };
-    let ran = keeping.run(&bash(scripts.at("collect.bash"))).await.unwrap().whole().unwrap();
+    let ran = Keeping
+        .run(&bash(scripts.at("collect.bash")), |at| vec![at.bc_session(), at.bash_env()])
+        .await
+        .unwrap()
+        .whole()
+        .unwrap();
 
     assert_eq!(ran.subject, ExitStatus::Code(0));
     assert_eq!(ran.shells.len(), 1, "provenance is the shape: one shell produced all of it");
@@ -114,8 +120,12 @@ async fn a_script_joins_where_it_chooses_and_is_heard_from_there() {
             "#,
     )]);
 
-    let keeping = Reached { rig: Keeping, reaching: Reaching::ByHand };
-    let ran = keeping.run(&bash(scripts.at("collect.bash"))).await.unwrap().whole().unwrap();
+    let ran = Keeping
+        .run(&bash(scripts.at("collect.bash")), |at| vec![at.bc_session()])
+        .await
+        .unwrap()
+        .whole()
+        .unwrap();
 
     assert_eq!(ran.subject, ExitStatus::Code(0));
     assert_eq!(ran.shells.len(), 1, "the one that sourced the address");

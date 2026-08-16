@@ -6,7 +6,7 @@
 //!
 //! `cargo test --test examples -- --nocapture profiling`
 
-use mb_resolver::bash::rig::{heard, Driving, ExitStatus, Reached, Reaching};
+use mb_resolver::bash::rig::{heard, Driving, ExitStatus};
 use mb_resolver::bashprof::{recorded, BashProf, Profile};
 
 use crate::support::{bash, Scripts};
@@ -31,7 +31,7 @@ async fn a_run_is_read_as_a_tree_and_then_as_measurements() {
     let scripts = Scripts::of(&[("build.bash", BUILD)]);
 
     // Step one: run it. Every shell that joined kept what it said.
-    let ran = Reached { rig: BashProf, reaching: Reaching::BashEnv }.run(&bash(scripts.at("build.bash"))).await.unwrap().whole().unwrap();
+    let ran = BashProf.run(&bash(scripts.at("build.bash")), |at| vec![at.bc_session(), at.bash_env()]).await.unwrap().whole().unwrap();
     assert_eq!(ran.subject, ExitStatus::Code(0), "the subject's own status, as always");
 
     // Step two: read those messages as the tree the calls made. `heard` puts
@@ -81,7 +81,7 @@ async fn a_run_that_died_mid_call_still_measured_what_completed() {
         "#,
     )]);
 
-    let ran = Reached { rig: BashProf, reaching: Reaching::BashEnv }.run(&bash(scripts.at("build.bash"))).await.unwrap().whole().unwrap();
+    let ran = BashProf.run(&bash(scripts.at("build.bash")), |at| vec![at.bc_session(), at.bash_env()]).await.unwrap().whole().unwrap();
     assert_eq!(ran.subject, ExitStatus::Code(1), "the subject failed, so the run reports that");
 
     let forest = recorded(&heard(&ran.shells)).unwrap();

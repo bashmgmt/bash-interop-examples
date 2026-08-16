@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    field, Answer, Driving, ExitStatus, Failure, Layout, Message, Reached, Reaching, Reacting, Rig,
+    field, Answer, Driving, ExitStatus, Failure, Layout, Message, Reacting, Rig,
     Shell,
 };
 
@@ -120,6 +120,8 @@ impl Reacting for Conversation {
     }
 }
 
+impl Driving for Choosing {}
+
 #[tokio::test]
 async fn each_turn_is_computed_from_what_the_other_side_said() {
     let scripts = Scripts::of(&[(
@@ -133,8 +135,12 @@ async fn each_turn_is_computed_from_what_the_other_side_said() {
         "#,
     )]);
 
-    let choosing = Reached { rig: Choosing, reaching: Reaching::BashEnv };
-    let ran = choosing.run(&bash(scripts.at("session.bash"))).await.unwrap().whole().unwrap();
+    let ran = Choosing
+        .run(&bash(scripts.at("session.bash")), |at| vec![at.bc_session(), at.bash_env()])
+        .await
+        .unwrap()
+        .whole()
+        .unwrap();
 
     let marks: Vec<&[String]> =
         ran.shells[0].kept.iter().filter_map(|message| message.behind("MARK")).collect();

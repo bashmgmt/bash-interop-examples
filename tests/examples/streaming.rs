@@ -18,7 +18,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reached, Reaching, Reacting, Rig,
+    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reacting, Rig,
     Shell,
 };
 
@@ -89,6 +89,8 @@ impl Reacting for Writing {
     }
 }
 
+impl Driving for Logging {}
+
 #[tokio::test]
 async fn a_session_may_hold_a_resource_and_keep_no_messages() {
     let scripts = Scripts::of(&[(
@@ -101,9 +103,9 @@ async fn a_session_may_hold_a_resource_and_keep_no_messages() {
     )]);
     let into = scripts.at("said.log");
 
-    let logging = Reached { rig: Logging::writing(into.clone()).unwrap(), reaching: Reaching::BashEnv };
-    let ran = logging
-        .run(&bash(scripts.at("main.bash")))
+    let ran = Logging::writing(into.clone())
+        .unwrap()
+        .run(&bash(scripts.at("main.bash")), |at| vec![at.bc_session(), at.bash_env()])
         .await
         .unwrap()
         .whole()

@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use mb_resolver::bash::rig::{
-    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reached, Reaching, Reacting, Rig,
+    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Reacting, Rig,
     Shell,
 };
 use mb_resolver::bashcap::{instrument, Capture, Tracing};
@@ -74,11 +74,13 @@ impl Reacting for Seen {
     }
 }
 
+impl Driving for Snapshots {}
+
 #[tokio::test]
 async fn a_tools_instrument_is_reusable_without_its_command_line() {
     let ran =
-        Reached { rig: Snapshots, reaching: Reaching::BashEnv }
-            .run(&bash(fixture("bashcap_demo/demo.bash")))
+        Snapshots
+            .run(&bash(fixture("bashcap_demo/demo.bash")), |at| vec![at.bc_session(), at.bash_env()])
             .await
             .unwrap()
             .whole()

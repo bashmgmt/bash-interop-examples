@@ -10,7 +10,7 @@
 //!
 //! Every one of them is the same pieces: a rig saying what bash the subject
 //! gets — its words, and the joins that connect them — how its shells are
-//! reached (`Reached`: `BASH_ENV`, or nothing beyond the address), and how a
+//! reached (the run's environment closure: the usual pair, or less), and how a
 //! reaction is built once a shell is there; and a reaction with whichever of
 //! `hear`/`answer`/`finish` it cares about. The tests are `#[tokio::test]`: a
 //! run is a future.
