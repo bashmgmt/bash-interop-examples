@@ -3,6 +3,7 @@ name = "bash-interop-examples"
 version = "0.1.0"
 edition = "2024"
 description = "Worked rigs against the bash-interop public API, and a program a bash fixture starts for itself."
+license = "MIT"
 publish = false
 
 [dependencies]

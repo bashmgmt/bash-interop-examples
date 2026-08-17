@@ -19,7 +19,7 @@
 //! that drives its own session has to have something to start. With `serve` it
 //! is that server; without it, it runs the fixture and checks what came out.
 //!
-//! `cargo test -p mb_resolver --test merging`
+//! `cargo test --test merging`
 
 use std::cell::RefCell;
 use std::iter::once;
