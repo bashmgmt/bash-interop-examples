@@ -138,7 +138,7 @@ async fn a_script_joins_where_it_chooses_and_is_heard_from_there() {
         r#"
             declare -- workspace="${LISTENING_SESSION:?the workspace, from the run closure}"
 
-            bash -c 'exit 0'                        # a shell of the subject's, not of the run's
+            bash -c 'exit 0'                        # started by the subject, no part of the run
 
             source "$workspace/prelude.bash"
             source "$workspace/rig.bash"

@@ -2,11 +2,11 @@
 //!
 //! Two shells speak. The session merges what they said into one ordered list,
 //! and every answer writes that list into an array the client owns and names —
-//! on this binary's command line, since the name is the client's to choose.
+//! on this binary's command line, since the client chooses the name.
 //!
-//! The merge is the whole session's, and a reaction is one shell's, so the list
-//! is a resource the rig holds and hands a share of to each shell it builds a
-//! reaction for. Every shell has a pipe of its own, so the order they were
+//! The merge spans the whole session while a reaction sees one shell, so the
+//! list is a resource the rig holds and hands a share of to each shell it
+//! builds a reaction for. Every shell has a pipe of its own, so the order they were
 //! *said* in is the sending shell's clock, which every message carries; the
 //! merge sorts on it when it is asked for.
 //!
