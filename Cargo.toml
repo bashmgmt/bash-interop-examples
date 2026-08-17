@@ -1,6 +1,6 @@
 [package]
 name = "bash-interop-examples"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Worked rigs against the bash-interop public API, and a program a bash fixture starts for itself."
 license = "MIT"
@@ -9,10 +9,10 @@ publish = false
 [dependencies]
 
 [dev-dependencies]
-bash-interop = "0.1"
+bash-interop = "0.2"
 bash-strings = "0.1"
-bashcap = "0.1"
-bashprof = "0.1"
+bashcap = "0.2"
+bashprof = "0.2"
 tokio = { version = "1.53", features = ["rt", "macros"] }
 serde_json = "1"
 log = "0.4"

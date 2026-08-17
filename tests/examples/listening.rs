@@ -17,9 +17,9 @@ struct Keeping;
 impl Rig for Keeping {
     type Reaction = Vec<Message>;
 
-    /// No words of its own: `BC_INSTR KEEP …` is what the script says.
+    /// The two words this script speaks.
     fn bash(&self, _at: &Layout) -> String {
-        String::new()
+        crate::saying("STEP", "KEEP") + &crate::saying("TOTAL", "KEEP")
     }
 
     async fn joined(&self, _at: &Layout, _shell: Arc<Shell>) -> Result<Vec<Message>, Failure> {
@@ -60,7 +60,7 @@ async fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
 
             note() {
                 found+=("$1")
-                BC_INSTR KEEP say STEP name "$1" seen "${#found[@]}"
+                STEP name "$1" seen "${#found[@]}"
             }
 
             note alpha
@@ -68,7 +68,7 @@ async fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
 
             # The accumulated array goes back in one message; word boundaries
             # survive because a message is a bash array, not a joined string.
-            BC_INSTR KEEP say TOTAL "${found[@]}"
+            TOTAL "${found[@]}"
             "#,
     )]);
 
@@ -143,7 +143,7 @@ async fn a_script_joins_where_it_chooses_and_is_heard_from_there() {
             source "$workspace/prelude.bash"
             source "$workspace/rig.bash"
             BC_JOIN KEEP "$workspace"
-            BC_INSTR KEEP say STEP name joined seen 1
+            STEP name joined seen 1
             "#,
     )]);
 

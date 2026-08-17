@@ -36,12 +36,15 @@ fn logging() {
     let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).try_init();
 }
 
-/// The word the rig's own answers call. A nameref is how bash lets a callee
-/// write into a variable the caller named, which is what makes the target a
-/// runtime choice rather than a compiled-in one.
+/// What the subject's shells get: the word the fixture speaks, and the word
+/// this rig's own answers call. A nameref is how bash lets a callee write into
+/// a variable the caller named, which makes the target a runtime choice rather
+/// than a compiled-in one.
 const MERGE_INTO: &str = r#"
+alias STEP='BC_SAY__ARG_LABEL=MERGE BC_SAY STEP'
+
 __merge_into() {
-    local -n __merge_target="${1:?the array to write}"
+    declare -n __merge_target="${1:?the array to write}"
     shift
     __merge_target=("$@")
 }

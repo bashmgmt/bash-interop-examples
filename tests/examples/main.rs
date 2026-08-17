@@ -62,3 +62,20 @@ pub fn fixture(relative: impl AsRef<std::path::Path>) -> std::path::PathBuf {
         .join("__fixtures")
         .join(relative)
 }
+
+/// A saying word for a rig's own label. An alias, so a script's words ride on
+/// the right and reach the wire without a frame of their own.
+pub fn saying(word: &str, label: &str) -> String {
+    format!(
+        "alias {word}='BC_SAY__ARG_LABEL={label} BC_SAY {word}'
+"
+    )
+}
+
+/// A saying word an *answer* can call. An answer runs as `"${__BC__ANSWER[@]}"`,
+/// and that expansion names commands rather than aliases, so a word a rig
+/// answers with is a function — one frame, in exchange for being callable
+/// from a reply.
+pub fn saying_fn(word: &str, label: &str) -> String {
+    format!("{word}() {{ declare -- BC_SAY__ARG_LABEL={label}; BC_SAY {word} \"$@\"; }}\n")
+}

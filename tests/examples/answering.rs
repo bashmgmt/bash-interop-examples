@@ -17,10 +17,8 @@ use bash_interop::rig::{
 
 use crate::support::{Scripts, bash, sourcing};
 
+/// Words the operator's own answers call, beside the two the script speaks.
 const OPERATOR_BASH: &str = r#"
-MARK() {
-    BC_INSTR CHOOSE say MARK "$@";
-}
 REFUSE() {
     printf 'operator: %s\n' "${1:?the complaint}" >&2
     return "${2:?its status}"
@@ -76,7 +74,7 @@ impl Rig for Choosing {
     type Reaction = Conversation;
 
     fn bash(&self, _at: &Layout) -> String {
-        OPERATOR_BASH.to_string()
+        crate::saying("MARK", "CHOOSE") + &crate::saying("CANDIDATE", "CHOOSE") + OPERATOR_BASH
     }
 
     async fn joined(&self, at: &Layout, shell: Arc<Shell>) -> Result<Conversation, Failure> {
@@ -110,7 +108,7 @@ impl Reacting for Conversation {
             "survey" => sourcing(
                 &step,
                 r#"
-                inspect() { BC_INSTR CHOOSE say CANDIDATE name "$1" weight "${#1}"; }
+                inspect() { CANDIDATE name "$1" weight "${#1}"; }
                 for item in pear kiwi elderberry; do inspect "$item"; done
                 "#,
             ),
@@ -142,10 +140,14 @@ async fn each_turn_is_computed_from_what_the_other_side_said() {
     let scripts = Scripts::of(&[(
         "subject.bash",
         r#"
-        BC_INSTR CHOOSE ask phase survey
-        BC_INSTR CHOOSE ask phase choose
+        declare -- BC_ASK__ARG_LABEL=CHOOSE
+        declare -a BC_ASK__ARGS=(phase survey)
+        BC_ASK
+        BC_ASK__ARGS=(phase choose)
+        BC_ASK
         MARK "settled on $picked"
-        BC_INSTR CHOOSE ask phase nonsense || exit $?
+        BC_ASK__ARGS=(phase nonsense)
+        BC_ASK || exit $?
         MARK unreachable
         "#,
     )]);

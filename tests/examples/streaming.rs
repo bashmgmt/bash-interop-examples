@@ -56,7 +56,7 @@ impl Rig for Logging {
 
     /// No words of its own in the subject's shells.
     fn bash(&self, _at: &Layout) -> String {
-        String::new()
+        crate::saying("REC", "LOG")
     }
 
     async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Writing, Failure> {
@@ -112,9 +112,9 @@ async fn a_session_may_hold_a_resource_and_keep_no_messages() {
     let scripts = Scripts::of(&[(
         "main.bash",
         r#"
-        BC_INSTR LOG say REC one
-        ( BC_INSTR LOG say REC from-a-subshell )
-        BC_INSTR LOG say REC two
+        REC one
+        ( REC from-a-subshell )
+        REC two
         "#,
     )]);
     let into = scripts.at("said.log");
