@@ -30,6 +30,7 @@ jobs:
           [patch.crates-io]
           bash-interop = { git = "https://github.com/bashmgmt/bash-interop" }
           bash-strings = { git = "https://github.com/bashmgmt/bash-strings" }
+          hylic = { git = "https://github.com/hylic-recursion/hylic", branch = "mb-ws" }
           bashcap = { git = "https://github.com/bashmgmt/bashcap" }
           bashprof = { git = "https://github.com/bashmgmt/bashprof" }
           EOF
@@ -55,6 +56,7 @@ jobs:
           [patch.crates-io]
           bash-interop = { git = "https://github.com/bashmgmt/bash-interop" }
           bash-strings = { git = "https://github.com/bashmgmt/bash-strings" }
+          hylic = { git = "https://github.com/hylic-recursion/hylic", branch = "mb-ws" }
           bashcap = { git = "https://github.com/bashmgmt/bashcap" }
           bashprof = { git = "https://github.com/bashmgmt/bashprof" }
           EOF
