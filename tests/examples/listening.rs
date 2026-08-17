@@ -1,10 +1,10 @@
 //! A session that keeps what a script says, and a decoder that reads it back.
 //!
-//! The rig contributes no bash but its join: `STEP` is a word this script
-//! chose, and `behind` is how a decoder claims it. Nor does it contribute a
-//! reaction — `Vec<Message>` is one already, and keeping every message is all
-//! this wants. How its shells find the session is the run's decision, not
-//! the rig's: each test below states it as the run's environment closure.
+//! The rig contributes two words, `STEP` and `TOTAL`, each an alias over
+//! `BC_SAY`; `behind` is how a decoder claims one. It contributes no reaction —
+//! `Vec<Message>` is one already, and keeping every message is all this wants.
+//! The run decides how its shells find the session, and each test below states
+//! that as the run's environment closure.
 
 use std::sync::Arc;
 

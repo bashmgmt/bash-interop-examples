@@ -1,11 +1,11 @@
 //! A session that answers, and decides from what it has heard.
 //!
-//! An answer is a command the shell runs, so its expressiveness is bash's:
-//! `return`, `declare -g`, `source`, `exit`, or any word the rig's own bash
-//! defined. A refusal is a command that says so and returns non-zero.
+//! An answer is a command the shell runs, so bash supplies the expressiveness:
+//! `declare`, `source`, `exit`, or any function the rig's own bash defined. A
+//! refusal is a command that says so and returns non-zero.
 //!
-//! One reaction per shell, so the conversation each answer is computed from is
-//! that shell's own — and where an answer's bash goes is the session's own
+//! One reaction per shell, so each answer is computed from that shell's own
+//! conversation, and an answer that writes bash puts it in the session's
 //! workspace, which every reaction is handed at construction.
 
 use std::path::PathBuf;

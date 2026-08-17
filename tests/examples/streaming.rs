@@ -54,7 +54,7 @@ struct Writing {
 impl Rig for Logging {
     type Reaction = Writing;
 
-    /// No words of its own in the subject's shells.
+    /// One word, `REC`, for the script to speak with.
     fn bash(&self, _at: &Layout) -> String {
         crate::saying("REC", "LOG")
     }

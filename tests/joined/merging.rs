@@ -1,9 +1,8 @@
 //! bash drives, and the session hands back a view of itself.
 //!
 //! Two shells speak. The session merges what they said into one ordered list,
-//! and every answer writes that list into an array of the client's — named on
-//! this binary's command line, because the variable is the client's and so is
-//! its name.
+//! and every answer writes that list into an array the client owns and names —
+//! on this binary's command line, since the name is the client's to choose.
 //!
 //! The merge is the whole session's, and a reaction is one shell's, so the list
 //! is a resource the rig holds and hands a share of to each shell it builds a
@@ -196,8 +195,8 @@ async fn serve(at: PathBuf, into: String) {
 }
 
 /// The example: run the fixture, handing it this binary's own path as the
-/// server it should start. What array that server writes into is the fixture's
-/// decision, made on the command line it builds.
+/// server it should start. The fixture decides which array that server writes
+/// into, on the command line it builds.
 fn demonstrate() {
     let fixture = concat!(
         env!("CARGO_MANIFEST_DIR"),
