@@ -6,10 +6,10 @@
 //!
 //! `cargo test --test examples -- --nocapture profiling`
 
-use bash_interop::rig::{heard, Driving, ExitStatus, Provision};
-use bashprof::{recorded, BashProf, Profile};
+use bash_interop::rig::{Driving, ExitStatus, Provision, heard};
+use bashprof::{BashProf, Profile, recorded};
 
-use crate::support::{bash, logging, Scripts};
+use crate::support::{Scripts, bash, logging};
 
 /// A build that calls two steps, one of which calls a third. Every `sleep` is
 /// work that belongs to the call it sits in.
@@ -34,15 +34,31 @@ async fn a_run_is_read_as_a_tree_and_then_as_measurements() {
     let scripts = Scripts::of(&[("build.bash", BUILD)]);
 
     // Step one: run it. Every shell that joined kept what it said.
-    let ran = BashProf.run(&bash(scripts.at("build.bash")), |at| Ok(vec![at.bash_env(Provision::Joining(&bashprof::joining(at)))?])).await.unwrap().whole().unwrap();
-    assert_eq!(ran.subject, ExitStatus::Code(0), "the subject's own status, as always");
+    let ran = BashProf
+        .run(&bash(scripts.at("build.bash")), |at| {
+            Ok(vec![at.bash_env(
+                Provision::Joining(&bashprof::joining(at)),
+            )?])
+        })
+        .await
+        .unwrap()
+        .whole()
+        .unwrap();
+    assert_eq!(
+        ran.subject,
+        ExitStatus::Code(0),
+        "the subject's own status, as always"
+    );
 
     // Step two: read those messages as the tree the calls made. `heard` puts
     // the per-shell foldings back in the order they were said, each message
     // with the shell that sent it — a walk means nothing without it. Every
     // call that began is in the tree, whether or not it ended.
     let forest = recorded(&heard(&ran.shells)).expect("the instrument's own messages");
-    log::info!("as recorded:\n{}", bashprof::Recorded::render(&forest));
+    log::info!(
+        "as recorded:\n{}",
+        bashprof::Recorded::render(&forest)
+    );
 
     // Step three: read that tree as measurements. This is the step that can
     // refuse — a call the shell died inside has no duration to report.
@@ -51,22 +67,37 @@ async fn a_run_is_read_as_a_tree_and_then_as_measurements() {
 
     let build = &profile.roots[0];
     assert_eq!(build.complete.call.label, "build");
-    assert_eq!(build.complete.status, 0, "and what the measured command returned");
+    assert_eq!(
+        build.complete.status, 0,
+        "and what the measured command returned"
+    );
 
     // The tree is the nesting of the calls, not of the shells or the files.
-    let inside: Vec<&str> =
-        build.children.iter().map(|span| span.complete.call.label.as_str()).collect();
+    let inside: Vec<&str> = build
+        .children
+        .iter()
+        .map(|span| span.complete.call.label.as_str())
+        .collect();
     assert_eq!(inside, ["compile", "test"]);
 
     // A span covers its own work and everything it called; what no child was
     // running for is its own.
-    assert!(build.complete.took() >= 60_000, "the whole build slept 60 ms");
-    assert!(build.exclusive() < build.complete.took(), "most of which was inside its children");
+    assert!(
+        build.complete.took() >= 60_000,
+        "the whole build slept 60 ms"
+    );
+    assert!(
+        build.exclusive() < build.complete.took(),
+        "most of which was inside its children"
+    );
 
     // Where the call was made, which the nesting alone does not say.
     let at = build.complete.call.stack.top();
     assert_eq!(at.site.to_string(), "main");
-    assert!(at.source.found().is_some(), "and the file it was made in is right there");
+    assert!(
+        at.source.found().is_some(),
+        "and the file it was made in is right there"
+    );
 }
 
 /// The other shape: the shell dies inside a call, so there is no whole
@@ -85,16 +116,39 @@ async fn a_run_that_died_mid_call_still_measured_what_completed() {
         "#,
     )]);
 
-    let ran = BashProf.run(&bash(scripts.at("build.bash")), |at| Ok(vec![at.bash_env(Provision::Joining(&bashprof::joining(at)))?])).await.unwrap().whole().unwrap();
-    assert_eq!(ran.subject, ExitStatus::Code(1), "the subject failed, so the run reports that");
+    let ran = BashProf
+        .run(&bash(scripts.at("build.bash")), |at| {
+            Ok(vec![at.bash_env(
+                Provision::Joining(&bashprof::joining(at)),
+            )?])
+        })
+        .await
+        .unwrap()
+        .whole()
+        .unwrap();
+    assert_eq!(
+        ran.subject,
+        ExitStatus::Code(1),
+        "the subject failed, so the run reports that"
+    );
 
     let forest = recorded(&heard(&ran.shells)).unwrap();
     let unfinished = Profile::of(&forest).expect_err("the shell died inside `doomed`");
 
     // The error carries the result: a caller that can proceed does.
-    let labels: Vec<&str> =
-        unfinished.resolved.roots.iter().map(|span| span.complete.call.label.as_str()).collect();
+    let labels: Vec<&str> = unfinished
+        .resolved
+        .roots
+        .iter()
+        .map(|span| span.complete.call.label.as_str())
+        .collect();
     assert_eq!(labels, ["ok"]);
-    assert_eq!(unfinished.unended().iter().map(|call| call.label.as_str()).collect::<Vec<_>>(),
-        ["doomed"]);
+    assert_eq!(
+        unfinished
+            .unended()
+            .iter()
+            .map(|call| call.label.as_str())
+            .collect::<Vec<_>>(),
+        ["doomed"]
+    );
 }

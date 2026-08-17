@@ -8,11 +8,9 @@
 
 use std::sync::Arc;
 
-use bash_interop::rig::{
-    field, heard, Driving, ExitStatus, Failure, Layout, Message, Provision, Rig, Shell,
-};
+use bash_interop::rig::{Driving, ExitStatus, Failure, Layout, Message, Provision, Rig, Shell, field, heard};
 
-use crate::support::{bash, Scripts};
+use crate::support::{Scripts, bash};
 
 struct Keeping;
 
@@ -75,31 +73,53 @@ async fn a_script_reports_as_it_goes_and_the_run_hands_back_the_series() {
     )]);
 
     let ran = Keeping
-        .run(&bash(scripts.at("collect.bash")), |at| {
-            Ok(vec![at.bash_env(Provision::Joining(&Keeping.joining(at)))?])
-        })
+        .run(
+            &bash(scripts.at("collect.bash")),
+            |at| {
+                Ok(vec![at.bash_env(
+                    Provision::Joining(&Keeping.joining(at)),
+                )?])
+            },
+        )
         .await
         .unwrap()
         .whole()
         .unwrap();
 
     assert_eq!(ran.subject, ExitStatus::Code(0));
-    assert_eq!(ran.shells.len(), 1, "provenance is the shape: one shell produced all of it");
+    assert_eq!(
+        ran.shells.len(),
+        1,
+        "provenance is the shape: one shell produced all of it"
+    );
 
     // A run folds per shell, and `heard` puts those foldings back in the order
     // they were said. Each message comes with the shell that sent it.
     let said = heard(&ran.shells);
 
-    let steps: Vec<Step> = said.iter().filter_map(|said| step(said.message)).map(Result::unwrap).collect();
+    let steps: Vec<Step> = said
+        .iter()
+        .filter_map(|said| step(said.message))
+        .map(Result::unwrap)
+        .collect();
     assert_eq!(
         steps,
         [
-            Step { name: "alpha".into(), seen: 1 },
-            Step { name: "beta with spaces".into(), seen: 2 },
+            Step {
+                name: "alpha".into(),
+                seen: 1
+            },
+            Step {
+                name: "beta with spaces".into(),
+                seen: 2
+            },
         ]
     );
 
-    let total: Vec<&[String]> = said.iter().filter_map(|said| said.message.behind("TOTAL")).collect();
+    let total: Vec<&[String]> = said
+        .iter()
+        .filter_map(|said| said.message.behind("TOTAL"))
+        .collect();
     assert_eq!(
         total,
         [["alpha", "beta with spaces"]],
@@ -128,21 +148,45 @@ async fn a_script_joins_where_it_chooses_and_is_heard_from_there() {
     )]);
 
     let ran = Keeping
-        .run(&bash(scripts.at("collect.bash")), |at| Ok(vec![crate::support::listening_session(at)]))
+        .run(
+            &bash(scripts.at("collect.bash")),
+            |at| {
+                Ok(vec![crate::support::listening_session(
+                    at,
+                )])
+            },
+        )
         .await
         .unwrap()
         .whole()
         .unwrap();
 
     assert_eq!(ran.subject, ExitStatus::Code(0));
-    assert_eq!(ran.shells.len(), 1, "the one that sourced the address");
+    assert_eq!(
+        ran.shells.len(),
+        1,
+        "the one that sourced the address"
+    );
 
-    let steps: Vec<Step> = heard(&ran.shells).iter().filter_map(|said| step(said.message)).map(Result::unwrap).collect();
-    assert_eq!(steps, [Step { name: "joined".into(), seen: 1 }]);
+    let steps: Vec<Step> = heard(&ran.shells)
+        .iter()
+        .filter_map(|said| step(said.message))
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(
+        steps,
+        [Step {
+            name: "joined".into(),
+            seen: 1
+        }]
+    );
 }
 
 impl Keeping {
     fn joining(&self, at: &Layout) -> String {
-        format!("BC_JOIN KEEP {}\n", bash_strings::emit_scalar(at.text()))
+        format!(
+            "BC_JOIN KEEP {}\n",
+            bash_strings::emit_scalar(at.text())
+        )
     }
 }

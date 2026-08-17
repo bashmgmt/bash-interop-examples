@@ -26,35 +26,39 @@
 
 mod answering;
 mod listening;
+mod profiling;
 mod snapshotting;
 mod streaming;
-mod profiling;
 
 mod support {
     use std::ffi::OsString;
 
     use bash_interop::rig::Layout;
-    pub use bash_interop::scratch::{bash, sourcing, Scripts};
+    pub use bash_interop::scratch::{Scripts, bash, sourcing};
 
     /// The tools' convention for the by-hand reach: the workspace directory
     /// under a name of the client's own — a spelling, consulted by nothing in the
     /// core. Scripts load the pieces and initiate by it.
     #[allow(dead_code)] // each example uses its own subset
     pub fn listening_session(at: &Layout) -> (OsString, OsString) {
-        (OsString::from("LISTENING_SESSION"), OsString::from(at.text()))
+        (
+            OsString::from("LISTENING_SESSION"),
+            OsString::from(at.text()),
+        )
     }
 
     /// Test logging: `RUST_LOG` filters, `info` by default, captured per test.
     #[allow(dead_code)] // each example uses its own subset
     pub fn logging() {
-        let _ =
-            env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
-                .is_test(true)
-                .try_init();
+        let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+            .is_test(true)
+            .try_init();
     }
 }
 
 /// A script under `__fixtures/`, by path from the crate root.
 pub fn fixture(relative: impl AsRef<std::path::Path>) -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("__fixtures").join(relative)
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("__fixtures")
+        .join(relative)
 }

@@ -28,15 +28,12 @@ use std::process::Command;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use bash_interop::rig::{
-    Answer, Failure, Layout, Message, Reacting, Rig, Serving, Shell,
-};
+use bash_interop::rig::{Answer, Failure, Layout, Message, Reacting, Rig, Serving, Shell};
 use bash_strings::emit_array;
 
 /// `RUST_LOG` filters, `info` by default.
 fn logging() {
-    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
-        .try_init();
+    let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).try_init();
 }
 
 /// The word the rig's own answers call. A nameref is how bash lets a callee
@@ -78,7 +75,11 @@ impl Rig for Merging {
     }
 
     async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Merges, Failure> {
-        Ok(Merges { shell, into: self.into.clone(), heard: Rc::clone(&self.heard) })
+        Ok(Merges {
+            shell,
+            into: self.into.clone(),
+            heard: Rc::clone(&self.heard),
+        })
     }
 }
 
@@ -87,7 +88,9 @@ impl Reacting for Merges {
     type Kept = ();
 
     async fn hear(&mut self, said: Message) -> Result<(), Failure> {
-        self.heard.borrow_mut().push((Arc::clone(&self.shell), said));
+        self.heard
+            .borrow_mut()
+            .push((Arc::clone(&self.shell), said));
 
         Ok(())
     }
@@ -95,10 +98,15 @@ impl Reacting for Merges {
     /// `MERGE` alone, and nothing else. The question is not kept: it is a turn
     /// in the protocol, not something a shell said.
     async fn answer(&mut self, asked: Message) -> Result<Answer, Failure> {
-        let Some([]) = asked.behind("MERGE") else { return Ok(Answer::status(127)) };
+        let Some([]) = asked.behind("MERGE") else {
+            return Ok(Answer::status(127));
+        };
         let entries = merged(&self.heard.borrow());
 
-        Ok(Answer::of("__merge_into", once(self.into.clone()).chain(entries)))
+        Ok(Answer::of(
+            "__merge_into",
+            once(self.into.clone()).chain(entries),
+        ))
     }
 
     async fn finish(self) -> Result<(), Failure> {
@@ -118,9 +126,13 @@ fn merged(heard: &[(Arc<Shell>, Message)]) -> Vec<String> {
     let mut said: Vec<&(Arc<Shell>, Message)> = heard.iter().collect();
     said.sort_by_key(|(_, message)| message.stamp.sent_at);
 
-    let Some((_, first)) = said.first() else { return Vec::new() };
+    let Some((_, first)) = said.first() else {
+        return Vec::new();
+    };
 
-    said.iter().map(|(shell, message)| entry(shell, message, first)).collect()
+    said.iter()
+        .map(|(shell, message)| entry(shell, message, first))
+        .collect()
 }
 
 /// One line of the merge: which shell, how far into the session, how long the
@@ -130,7 +142,11 @@ fn entry(shell: &Shell, message: &Message, first: &Message) -> String {
     let since = message.stamp.sent_at.0 - first.stamp.sent_at.0;
     let travelled = message.stamp.heard_at.0.abs_diff(message.stamp.sent_at.0);
 
-    format!("{} {since} {travelled} {}", shell.nth + 1, emit_array(&message.words))
+    format!(
+        "{} {since} {travelled} {}",
+        shell.nth + 1,
+        emit_array(&message.words)
+    )
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -150,7 +166,12 @@ async fn main() {
 
 /// `serve --at <dir> --into <array>`.
 fn arguments(argv: &mut impl Iterator<Item = String>) -> (PathBuf, String) {
-    match (argv.next().as_deref(), argv.next(), argv.next().as_deref(), argv.next()) {
+    match (
+        argv.next().as_deref(),
+        argv.next(),
+        argv.next().as_deref(),
+        argv.next(),
+    ) {
         (Some("--at"), Some(at), Some("--into"), Some(name)) => (at.into(), name),
         _ => panic!("usage: merging serve --at <dir> --into <array>"),
     }
@@ -159,24 +180,40 @@ fn arguments(argv: &mut impl Iterator<Item = String>) -> (PathBuf, String) {
 /// The server the fixture starts. It holds our standard input; nothing is
 /// written back — the fixture probes the workspace it named and attaches.
 async fn serve(at: PathBuf, into: String) {
-    let merging = Merging { into, heard: Rc::new(RefCell::new(Vec::new())) };
+    let merging = Merging {
+        into,
+        heard: Rc::new(RefCell::new(Vec::new())),
+    };
     let served = merging.serve_coprocess(&at).await.expect("the session");
 
-    assert!(served.failed.is_none(), "the session closed up cleanly");
+    assert!(
+        served.failed.is_none(),
+        "the session closed up cleanly"
+    );
 }
 
 /// The example: run the fixture, handing it this binary's own path as the
 /// server it should start. What array that server writes into is the fixture's
 /// decision, made on the command line it builds.
 fn demonstrate() {
-    let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/__fixtures/merging.bash");
+    let fixture = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/__fixtures/merging.bash"
+    );
     let me = std::env::current_exe().expect("this binary");
 
-    let ran = Command::new("bash").arg(fixture).arg(&me).output().expect("bash");
+    let ran = Command::new("bash")
+        .arg(fixture)
+        .arg(&me)
+        .output()
+        .expect("bash");
 
     // The entries as they were written, timestamps and all. They are logged
     // because the offsets are real measurements and nothing can assert them.
-    log::info!("{}", String::from_utf8(ran.stderr).expect("the script's own stderr"));
+    log::info!(
+        "{}",
+        String::from_utf8(ran.stderr).expect("the script's own stderr")
+    );
 
     let said = String::from_utf8(ran.stdout).expect("the script's own stdout");
     assert_eq!(

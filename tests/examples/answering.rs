@@ -12,11 +12,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use bash_interop::rig::{
-    field, Answer, Driving, ExitStatus, Failure, Layout, Message, Provision, Reacting, Rig,
-    Shell,
+    Answer, Driving, ExitStatus, Failure, Layout, Message, Provision, Reacting, Rig, Shell, field,
 };
 
-use crate::support::{bash, sourcing, Scripts};
+use crate::support::{Scripts, bash, sourcing};
 
 const OPERATOR_BASH: &str = r#"
 MARK() {
@@ -51,7 +50,10 @@ impl Conversation {
     /// A file of this session's own to write an answer's bash into, one per
     /// question this shell has asked.
     fn step(&self) -> PathBuf {
-        self.dir.join(format!("step.{}.{}.bash", self.shell.pid, self.asked))
+        self.dir.join(format!(
+            "step.{}.{}.bash",
+            self.shell.pid, self.asked
+        ))
     }
 }
 
@@ -64,7 +66,10 @@ fn candidate(message: &Message) -> Option<Candidate> {
     let words = message.behind("CANDIDATE")?;
     let weight = field(words, "weight")?.parse().ok()?;
 
-    Some(Candidate { name: field(words, "name")?.to_string(), weight })
+    Some(Candidate {
+        name: field(words, "name")?.to_string(),
+        weight,
+    })
 }
 
 impl Rig for Choosing {
@@ -75,7 +80,12 @@ impl Rig for Choosing {
     }
 
     async fn joined(&self, at: &Layout, shell: Arc<Shell>) -> Result<Conversation, Failure> {
-        Ok(Conversation { shell, dir: at.path().to_path_buf(), heard: Vec::new(), asked: 0 })
+        Ok(Conversation {
+            shell,
+            dir: at.path().to_path_buf(),
+            heard: Vec::new(),
+            asked: 0,
+        })
     }
 }
 
@@ -107,10 +117,16 @@ impl Reacting for Conversation {
 
             "choose" => match self.preferred() {
                 Some(name) => sourcing(&step, &format!("picked={name}")),
-                None => Ok(Answer::of("REFUSE", ["nothing to choose from", "3"])),
+                None => Ok(Answer::of(
+                    "REFUSE",
+                    ["nothing to choose from", "3"],
+                )),
             },
 
-            other => Ok(Answer::of("REFUSE", [format!("unknown question {other:?}"), "2".into()])),
+            other => Ok(Answer::of(
+                "REFUSE",
+                [format!("unknown question {other:?}"), "2".into()],
+            )),
         }
     }
 
@@ -135,16 +151,24 @@ async fn each_turn_is_computed_from_what_the_other_side_said() {
     )]);
 
     let ran = Choosing
-        .run(&bash(scripts.at("subject.bash")), |at| {
-            Ok(vec![at.bash_env(Provision::Joining(&Choosing.joining(at)))?])
-        })
+        .run(
+            &bash(scripts.at("subject.bash")),
+            |at| {
+                Ok(vec![at.bash_env(
+                    Provision::Joining(&Choosing.joining(at)),
+                )?])
+            },
+        )
         .await
         .unwrap()
         .whole()
         .unwrap();
 
-    let marks: Vec<&[String]> =
-        ran.shells[0].kept.iter().filter_map(|message| message.behind("MARK")).collect();
+    let marks: Vec<&[String]> = ran.shells[0]
+        .kept
+        .iter()
+        .filter_map(|message| message.behind("MARK"))
+        .collect();
     assert_eq!(
         marks,
         [["settled on elderberry"]],
@@ -160,6 +184,9 @@ async fn each_turn_is_computed_from_what_the_other_side_said() {
 
 impl Choosing {
     fn joining(&self, at: &Layout) -> String {
-        format!("BC_JOIN CHOOSE {}\n", bash_strings::emit_scalar(at.text()))
+        format!(
+            "BC_JOIN CHOOSE {}\n",
+            bash_strings::emit_scalar(at.text())
+        )
     }
 }

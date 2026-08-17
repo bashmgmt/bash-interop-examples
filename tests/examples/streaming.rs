@@ -18,11 +18,10 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use bash_interop::rig::{
-    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Provision, Reacting, Rig,
-    Shell,
+    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Provision, Reacting, Rig, Shell,
 };
 
-use crate::support::{bash, Scripts};
+use crate::support::{Scripts, bash};
 
 type Sink = Rc<RefCell<BufWriter<File>>>;
 
@@ -35,7 +34,10 @@ impl Logging {
     fn writing(into: PathBuf) -> Result<Self, Failure> {
         let file = File::create(&into).doing(|| format!("writing {}", into.display()))?;
 
-        Ok(Self { into, sink: Rc::new(RefCell::new(BufWriter::new(file))) })
+        Ok(Self {
+            into,
+            sink: Rc::new(RefCell::new(BufWriter::new(file))),
+        })
     }
 }
 
@@ -58,7 +60,12 @@ impl Rig for Logging {
     }
 
     async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Writing, Failure> {
-        Ok(Writing { shell, into: self.into.clone(), sink: Rc::clone(&self.sink), written: 0 })
+        Ok(Writing {
+            shell,
+            into: self.into.clone(),
+            sink: Rc::clone(&self.sink),
+            written: 0,
+        })
     }
 }
 
@@ -69,7 +76,13 @@ impl Reacting for Writing {
     async fn hear(&mut self, said: Message) -> Result<(), Failure> {
         let at = || format!("writing {}", self.into.display());
 
-        writeln!(self.sink.borrow_mut(), "{} {}", self.shell.pid, said.words.join(" ")).doing(at)?;
+        writeln!(
+            self.sink.borrow_mut(),
+            "{} {}",
+            self.shell.pid,
+            said.words.join(" ")
+        )
+        .doing(at)?;
         self.written += 1;
 
         Ok(())
@@ -83,7 +96,10 @@ impl Reacting for Writing {
     }
 
     async fn finish(self) -> Result<usize, Failure> {
-        self.sink.borrow_mut().flush().doing(|| format!("flushing {}", self.into.display()))?;
+        self.sink
+            .borrow_mut()
+            .flush()
+            .doing(|| format!("flushing {}", self.into.display()))?;
 
         Ok(self.written)
     }
@@ -106,7 +122,9 @@ async fn a_session_may_hold_a_resource_and_keep_no_messages() {
     let logging = Logging::writing(into.clone()).unwrap();
     let ran = logging
         .run(&bash(scripts.at("main.bash")), |at| {
-            Ok(vec![at.bash_env(Provision::Joining(&logging.joining(at)))?])
+            Ok(vec![at.bash_env(
+                Provision::Joining(&logging.joining(at)),
+            )?])
         })
         .await
         .unwrap()
@@ -117,16 +135,30 @@ async fn a_session_may_hold_a_resource_and_keep_no_messages() {
 
     // Two shells and three `say`s. A shell announcing itself is not a message:
     // it is what makes the shell, and what a reaction is built from.
-    assert_eq!(ran.shells.len(), 2, "the subshell is a shell of its own");
-    assert_eq!(ran.shells.iter().map(|at| at.kept).sum::<usize>(), 3, "what the script said");
+    assert_eq!(
+        ran.shells.len(),
+        2,
+        "the subshell is a shell of its own"
+    );
+    assert_eq!(
+        ran.shells.iter().map(|at| at.kept).sum::<usize>(),
+        3,
+        "what the script said"
+    );
 
     let log = std::fs::read_to_string(&into).unwrap();
-    assert_eq!(log.lines().filter(|line| line.contains("REC")).count(), 3);
+    assert_eq!(
+        log.lines().filter(|line| line.contains("REC")).count(),
+        3
+    );
     assert!(log.contains("from-a-subshell"));
 }
 
 impl Logging {
     fn joining(&self, at: &Layout) -> String {
-        format!("BC_JOIN LOG {}\n", bash_strings::emit_scalar(at.text()))
+        format!(
+            "BC_JOIN LOG {}\n",
+            bash_strings::emit_scalar(at.text())
+        )
     }
 }

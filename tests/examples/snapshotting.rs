@@ -12,10 +12,9 @@
 use std::sync::Arc;
 
 use bash_interop::rig::{
-    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Provision, Reacting, Rig,
-    Shell,
+    Answer, Doing, Driving, ExitStatus, Failure, Layout, Message, Provision, Reacting, Rig, Shell,
 };
-use bashcap::{instrument, Capture, Tracing};
+use bashcap::{Capture, Tracing, instrument};
 
 use crate::fixture;
 use crate::support::{bash, logging};
@@ -43,7 +42,10 @@ impl Rig for Snapshots {
     }
 
     async fn joined(&self, _at: &Layout, shell: Arc<Shell>) -> Result<Seen, Failure> {
-        Ok(Seen { shell, captures: Vec::new() })
+        Ok(Seen {
+            shell,
+            captures: Vec::new(),
+        })
     }
 }
 
@@ -57,7 +59,8 @@ impl Reacting for Seen {
             return Ok(());
         };
 
-        self.captures.push(decoded.doing(|| format!("a snapshot from pid {}", self.shell.pid))?);
+        self.captures
+            .push(decoded.doing(|| format!("a snapshot from pid {}", self.shell.pid))?);
 
         Ok(())
     }
@@ -80,15 +83,19 @@ impl Driving for Snapshots {}
 async fn a_tools_instrument_is_reusable_without_its_command_line() {
     logging();
 
-    let ran =
-        Snapshots
-            .run(&bash(fixture("snapshotting/demo.bash")), |at| {
-                Ok(vec![at.bash_env(Provision::Joining(&bashcap::joining(at)))?])
-            })
-            .await
-            .unwrap()
-            .whole()
-            .unwrap();
+    let ran = Snapshots
+        .run(
+            &bash(fixture("snapshotting/demo.bash")),
+            |at| {
+                Ok(vec![at.bash_env(
+                    Provision::Joining(&bashcap::joining(at)),
+                )?])
+            },
+        )
+        .await
+        .unwrap()
+        .whole()
+        .unwrap();
     assert_eq!(ran.subject, ExitStatus::Code(0));
 
     let seen: Vec<&Capture> = ran.shells.iter().flat_map(|at| &at.kept).collect();
@@ -98,8 +105,14 @@ async fn a_tools_instrument_is_reusable_without_its_command_line() {
 
     // The fixture is meant to be edited: what follows holds for any script
     // that calls `BASHCAP`, and reads none of its lines, names or counts.
-    assert!(!seen.is_empty(), "an instrumented script took at least one snapshot");
-    assert!(ran.shells.len() > 1, "the fixture's subshell and child are shells of their own");
+    assert!(
+        !seen.is_empty(),
+        "an instrumented script took at least one snapshot"
+    );
+    assert!(
+        ran.shells.len() > 1,
+        "the fixture's subshell and child are shells of their own"
+    );
 
     for capture in &seen {
         assert!(
@@ -107,18 +120,26 @@ async fn a_tools_instrument_is_reusable_without_its_command_line() {
             "pid {} says where it is",
             capture.shell.pid
         );
-        assert!(capture.snapshot.state.contains_key("seconds"), "and how long it had been up");
+        assert!(
+            capture.snapshot.state.contains_key("seconds"),
+            "and how long it had been up"
+        );
     }
 
     // `BASH_ENV` reaches every shell; a command line would have reached only
     // the first.
-    let frames: Vec<_> = seen.iter().flat_map(|capture| capture.snapshot.stack.frames()).collect();
+    let frames: Vec<_> = seen
+        .iter()
+        .flat_map(|capture| capture.snapshot.stack.frames())
+        .collect();
     assert!(
         frames.iter().all(|frame| frame.args.is_some()),
         "asking for the full stack gets it in every shell, not just where the run started"
     );
     assert!(
-        frames.iter().any(|frame| frame.args.as_deref().is_some_and(|args| !args.is_empty())),
+        frames
+            .iter()
+            .any(|frame| frame.args.as_deref().is_some_and(|args| !args.is_empty())),
         "and the arguments are the real ones, not empty lists"
     );
 }
